@@ -1,0 +1,59 @@
+name: Upload Windows Assets to v1.0.0
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/release-windows-assets.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-win:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            buildCmd: npx electron-builder --win --x64 --publish never
+            suffix: x64
+          - arch: ia32
+            buildCmd: npx electron-builder --win --ia32 --publish never
+            suffix: x86
+
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build ${{ matrix.arch }}
+        run: ${{ matrix.buildCmd }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - name: Rename artifact
+        shell: bash
+        run: |
+          ver=$(node -p "require('./package.json').version")
+          cp "dist/NocLauncher Setup ${ver}.exe" "dist/NocLauncher-${ver}-windows-${{ matrix.suffix }}.exe"
+
+      - name: Upload to release v1.0.0
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          files: |
+            dist/NocLauncher-*-windows-${{ matrix.suffix }}.exe
+          fail_on_unmatched_files: true
+          overwrite_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
