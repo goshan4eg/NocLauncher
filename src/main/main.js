@@ -514,8 +514,8 @@ const store = new Store({
     downloadMode: 'fast', // normal | fast | turbo
     enableMirrorFallback: true,
     bedrockDemoMode: false,
-    fpsBoostMode: false,
-    fpsPreset: 'safe',
+    fpsBoostMode: true,
+    fpsPreset: 'balanced',
     offlineSkinPath: '',
     skinMode: 'auto', // off | file | nick | url | auto
     skinNick: '',
@@ -532,8 +532,8 @@ const store = new Store({
     jvmPreset: 'auto', // auto | stable | fps | lowend
     safeLaunchNoMods: false,
     autoFixOnCrash: true,
-    uiLowPower: false,
-    closeLauncherOnGameStart: true
+    uiLowPower: true,
+    closeLauncherOnGameStart: false
   }
 });
 
@@ -4523,7 +4523,7 @@ if (preset && preset !== 'auto') {
         if (safeModsRenamed && !fs.existsSync(modsPath) && fs.existsSync(modsDisabledPath)) fs.renameSync(modsDisabledPath, modsPath);
       } catch (_) {}
 
-      if (shouldHideOnLaunch || shouldCloseOnLaunch) restoreLauncherAfterGame();
+      if (shouldHideOnLaunch) restoreLauncherAfterGame();
       const durMs = Date.now() - startedAt;
       const ring = getRingText();
       const ringLower = ring.toLowerCase();
@@ -4560,13 +4560,14 @@ if (preset && preset !== 'auto') {
       proc.on('exit', onClose);
       proc.on('error', (err) => {
         sendLog('error', err?.stack || String(err));
-        if (shouldHideOnLaunch || shouldCloseOnLaunch) restoreLauncherAfterGame();
+        if (shouldHideOnLaunch) restoreLauncherAfterGame();
         sendMcState('error', { error: String(err?.message || err), version: resolved.id, logPath, tail: getRingText().slice(-6000) });
       });
     };
 
-    const shouldHideOnLaunch = payload?.hideOnLaunch !== false;
-    const shouldCloseOnLaunch = payload?.closeLauncherOnLaunch === true || settings.closeLauncherOnGameStart === true;
+    // "Закрыть лаунчер после запуска" трактуем как "скрыть в фон".
+    // Процесс лаунчера должен жить, чтобы корректно вернуться после выхода из игры.
+    const shouldHideOnLaunch = (payload?.hideOnLaunch !== false) || payload?.closeLauncherOnLaunch === true || settings.closeLauncherOnGameStart === true;
 
     const launchResult = launcherClient.launch(opts);
 
@@ -4599,7 +4600,7 @@ if (preset && preset !== 'auto') {
         sendMcState('launched', { version: resolved.id, logPath });
         // "Закрыть лаунчер" во время игры = убрать окно (не завершать процесс),
         // чтобы после выхода из игры можно было вернуть лаунчер обратно.
-        if (shouldCloseOnLaunch || shouldHideOnLaunch) {
+        if (shouldHideOnLaunch) {
           hideLauncherForGame();
         }
       }).catch((err) => {
@@ -4610,7 +4611,7 @@ if (preset && preset !== 'auto') {
     } else {
       attachProc(launchResult);
       sendMcState('launched', { version: resolved.id, logPath });
-      if (shouldCloseOnLaunch || shouldHideOnLaunch) {
+      if (shouldHideOnLaunch) {
         hideLauncherForGame();
       }
     }
