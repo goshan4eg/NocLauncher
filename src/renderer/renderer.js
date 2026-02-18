@@ -1627,8 +1627,9 @@ function setMode(mode) {
   $('#username')?.closest('.field')?.classList.toggle('hidden', mode !== 'java');
   $('#btnPlay')?.classList.toggle('hidden', mode !== 'java');
   $('#bedrockBox')?.classList.toggle('hidden', mode !== 'bedrock');
-  // Java library button should not appear in Bedrock mode
+  // Java library buttons should not appear in Bedrock mode
   $('#btnOpenLibrary')?.classList.toggle('hidden', mode !== 'java');
+  $('#btnOpenModrinth')?.classList.toggle('hidden', mode !== 'java');
   showDlBox(mode === 'java' ? !$('#dlBox')?.classList.contains('hidden') : false);
 
   if (mode === 'java') {
@@ -1860,6 +1861,17 @@ async function applySync() {
   else setStatus(`Синхронизация: ошибка ${r?.error || 'unknown'}`);
 }
 
+async function openModrinthCatalogFromUI() {
+  try {
+    const mcVersion = getSelectedBaseVersion();
+    const loader = String($('#loaderMode')?.value || state.settings?.loaderMode || 'vanilla');
+    const r = await window.noc.openCatalog({ provider: 'modrinth', mcVersion, loader });
+    if (!r?.ok) throw new Error(r?.error || 'Не удалось открыть Modrinth');
+  } catch (e) {
+    setStatus('Modrinth: ' + (e?.message || e));
+  }
+}
+
 function wireUI() {
   $('#modeJava')?.addEventListener('click', () => setMode('java'));
   $('#modeBedrock')?.addEventListener('click', () => setMode('bedrock'));
@@ -1897,6 +1909,7 @@ function wireUI() {
   $('#btnOpenLibrary')?.addEventListener('click', async () => {
     try { await openModsModal(); } catch (e) { setStatus('Ошибка: ' + (e?.message || e)); }
   });
+  $('#btnOpenModrinth')?.addEventListener('click', () => openModrinthCatalogFromUI());
 
   // Library tabs
   document.querySelectorAll('#libraryTabs .segBtn')?.forEach(btn => {
@@ -1924,6 +1937,7 @@ function wireUI() {
     else if (!r?.canceled) setHint('modsHint', r?.error || 'Не удалось установить');
   });
   $('#modsSearchBtn')?.addEventListener('click', () => doModsSearch());
+  $('#modsOpenModrinthBtn')?.addEventListener('click', () => openModrinthCatalogFromUI());
   $('#modsSearch')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') doModsSearch(); });
   $('#modsUpdateAllBtn')?.addEventListener('click', async () => {
     setHint('modsHint', 'Обновление модов...');
