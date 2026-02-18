@@ -51,19 +51,18 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Upload artifacts from dist/
+      - name: Normalize artifact names + checksums
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          node -e "const fs=require('fs');const path=require('path');const crypto=require('crypto');const pkg=require('./package.json');const v=pkg.version;const t=(process.env.TARGET||'').toLowerCase();const dist='dist';const out=path.join(dist,'release-assets');fs.mkdirSync(out,{recursive:true});const exts=t==='win'?['.exe','.msi','.blockmap']:t==='linux'?['.AppImage','.deb','.rpm']:['.dmg','.zip'];const osTag=t==='win'?'windows':t==='linux'?'linux':'macos';const files=fs.existsSync(dist)?fs.readdirSync(dist):[];const picked=files.filter(f=>exts.some(e=>f.endsWith(e)));for(const f of picked){const src=path.join(dist,f);const ext=path.extname(f);const dstName=`NocLauncher-${v}-${osTag}-x64${ext}`;const dst=path.join(out,dstName);fs.copyFileSync(src,dst);}const outFiles=fs.readdirSync(out).map(f=>path.join(out,f));const lines=[];for(const f of outFiles){const buf=fs.readFileSync(f);const hash=crypto.createHash('sha256').update(buf).digest('hex');lines.push(`${hash}  ${path.basename(f)}`);}fs.writeFileSync(path.join(out,'SHA256SUMS.txt'),lines.join('\n')+'\n');"
+
+      - name: Upload release assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
-          files: |
-            dist/*.exe
-            dist/*.msi
-            dist/*.AppImage
-            dist/*.deb
-            dist/*.rpm
-            dist/*.dmg
-            dist/*.zip
-            dist/*.blockmap
+          files: dist/release-assets/*
           fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
