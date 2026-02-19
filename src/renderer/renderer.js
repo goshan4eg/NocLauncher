@@ -22,6 +22,83 @@ function on(id, event, handler) {
   return el;
 }
 
+// ---------------------------------------------------------------------------
+// Custom dropdown for Loader (prevents the native white <select> menu)
+// ---------------------------------------------------------------------------
+function loaderLabel(v) {
+  const k = String(v || 'vanilla');
+  if (k === 'fabric') return 'Fabric';
+  if (k === 'forge') return 'Forge';
+  if (k === 'neoforge') return 'NeoForge';
+  if (k === 'optifine') return 'OptiFine';
+  return 'Vanilla';
+}
+
+function syncLoaderDropdown() {
+  const sel = document.getElementById('loaderMode');
+  const btnText = document.getElementById('loaderBtnText');
+  const menu = document.getElementById('loaderMenu');
+  if (!sel || !btnText || !menu) return;
+
+  const val = String(sel.value || 'vanilla');
+  btnText.textContent = loaderLabel(val);
+  menu.querySelectorAll('[data-value]')?.forEach((b) => {
+    b.classList.toggle('active', String(b.dataset.value) === val);
+  });
+}
+
+function initLoaderDropdown() {
+  const sel = document.getElementById('loaderMode');
+  const btn = document.getElementById('loaderBtn');
+  const menu = document.getElementById('loaderMenu');
+  const wrap = document.getElementById('loaderDropdown');
+  if (!sel || !btn || !menu || !wrap) return;
+
+  const close = () => {
+    menu.classList.add('hidden');
+    btn.setAttribute('aria-expanded', 'false');
+  };
+  const open = () => {
+    syncLoaderDropdown();
+    menu.classList.remove('hidden');
+    btn.setAttribute('aria-expanded', 'true');
+  };
+
+  on('loaderBtn', 'click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (menu.classList.contains('hidden')) open(); else close();
+  });
+
+  on('loaderMenu', 'click', (e) => {
+    const item = e.target?.closest?.('[data-value]');
+    if (!item) return;
+    const v = String(item.dataset.value || 'vanilla');
+    sel.value = v;
+    // Fire change so the rest of UI reacts + persists setting
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    syncLoaderDropdown();
+    close();
+  });
+
+  // Close when clicking outside
+  document.addEventListener('pointerdown', (e) => {
+    if (menu.classList.contains('hidden')) return;
+    if (wrap.contains(e.target)) return;
+    close();
+  }, { passive: true });
+
+  // Escape closes
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') close();
+  });
+
+  // Keep in sync when select changes programmatically
+  on('loaderMode', 'change', () => syncLoaderDropdown());
+
+  syncLoaderDropdown();
+}
+
 // Lightweight animated background (stars + drifting planets)
 function initFX() {
   const canvas = document.getElementById('fx');
@@ -43,6 +120,7 @@ function initFX() {
   const comets = [];
   const ships = [];
   const lasers = [];
+  const petals = [];
 
   let lastT = performance.now();
   let logoPhase = 0;
@@ -138,6 +216,25 @@ function initFX() {
         vy: rand(-0.02, 0.02),
         s: rand(0.8, 1.25),
         cd: rand(400, 1400),
+      });
+    }
+  }
+
+  function makePetals() {
+    petals.length = 0;
+    const n = reduceMotion ? 14 : 34;
+    for (let i = 0; i < n; i++) {
+      petals.push({
+        x: rand(-40, w + 40),
+        y: rand(-h, h),
+        vx: rand(-0.03, 0.07),
+        vy: rand(0.03, 0.12),
+        s: rand(0.7, 1.5),
+        rot: rand(0, Math.PI * 2),
+        vr: rand(-0.003, 0.003),
+        wob: rand(0.4, 1.2),
+        ph: rand(0, Math.PI * 2),
+        a: rand(0.45, 0.85),
       });
     }
   }
@@ -296,6 +393,38 @@ function initFX() {
     ctx.globalAlpha = 1;
   }
 
+  function drawPetal(p, t) {
+    const wobble = Math.sin(t * 0.0012 * p.wob + p.ph) * 6;
+    ctx.save();
+    ctx.translate(p.x + wobble, p.y);
+    ctx.rotate(p.rot);
+    ctx.scale(p.s, p.s);
+    ctx.globalAlpha = p.a;
+
+    const g = ctx.createRadialGradient(-1.2, -1.6, 0.2, 0, 0, 8);
+    g.addColorStop(0, 'rgba(255,215,236,.95)');
+    g.addColorStop(0.55, 'rgba(255,174,214,.82)');
+    g.addColorStop(1, 'rgba(255,132,194,.66)');
+    ctx.fillStyle = g;
+
+    ctx.beginPath();
+    ctx.moveTo(0, -7);
+    ctx.bezierCurveTo(4.8, -7.2, 6.6, -2.2, 5.2, 1.2);
+    ctx.bezierCurveTo(4, 4.2, 1.8, 6.5, 0, 7.4);
+    ctx.bezierCurveTo(-1.8, 6.5, -4, 4.2, -5.2, 1.2);
+    ctx.bezierCurveTo(-6.6, -2.2, -4.8, -7.2, 0, -7);
+    ctx.fill();
+
+    ctx.globalAlpha = p.a * 0.35;
+    ctx.fillStyle = 'rgba(255,255,255,.95)';
+    ctx.beginPath();
+    ctx.ellipse(-1.2, -2.2, 1.2, 2.2, -0.4, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
   function drawShip(sh) {
     ctx.save();
     ctx.translate(sh.x, sh.y);
@@ -427,6 +556,18 @@ function initFX() {
       if (n.y > h + n.r) n.y = -n.r;
     }
 
+    for (const p of petals) {
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      p.rot += p.vr * dt;
+      if (p.y > h + 24) {
+        p.y = rand(-120, -20);
+        p.x = rand(-40, w + 40);
+      }
+      if (p.x < -60) p.x = w + 50;
+      if (p.x > w + 60) p.x = -50;
+    }
+
     if (!reduceMotion) {
       // ships movement + occasional firing
       for (const sh of ships) {
@@ -486,6 +627,9 @@ function initFX() {
     // planets
     for (const p of planets) drawPlanet(p, t);
 
+    // sakura leaves
+    for (const p of petals) drawPetal(p, t);
+
     // comets + battle
     for (const c of comets) drawComet(c);
     for (const lz of lasers) drawLaser(lz);
@@ -512,6 +656,7 @@ function initFX() {
   makeNebulae();
   makeComets();
   makeShips();
+  makePetals();
   window.addEventListener('resize', () => {
     resize();
     makeStars();
@@ -519,6 +664,7 @@ function initFX() {
     makeNebulae();
     makeComets();
     makeShips();
+    makePetals();
   });
 
   requestAnimationFrame(frame);
@@ -675,10 +821,43 @@ async function runLaunchHealthCheck(username, requested, loaderMode) {
     try {
       const baseVersion = normalizeBaseVersion(requested);
       const r = await window.noc.optiFineVersions(baseVersion);
+      const hasAny = !!(r?.ok && Array.isArray(r.builds) && r.builds.length);
       const hasStable = !!(r?.ok && Array.isArray(r.builds) && r.builds.some(b => !/pre/i.test(String(b.patch || ''))));
-      checks.push({ key: 'healthLoader', ok: hasStable, text: hasStable ? '• Лоадер: OptiFine stable OK' : '• Лоадер: только pre (нестабильно)' });
+      checks.push({
+        key: 'healthLoader',
+        ok: hasAny,
+        text: hasStable ? '• Лоадер: OptiFine stable OK' : (hasAny ? '• Лоадер: только pre (возможны баги)' : '• Лоадер: OptiFine не найден')
+      });
     } catch {
       checks.push({ key: 'healthLoader', ok: false, text: '• Лоадер: проверка OptiFine не удалась' });
+    }
+  } else if (loaderMode === 'fabric') {
+    try {
+      const baseVersion = normalizeBaseVersion(requested);
+      const r = await window.noc.fabricVersions(baseVersion);
+      const hasAny = !!(r?.ok && Array.isArray(r.loaders) && r.loaders.length);
+      const hasStable = !!(r?.ok && Array.isArray(r.loaders) && r.loaders.some(l => l?.stable));
+      checks.push({
+        key: 'healthLoader',
+        ok: hasAny,
+        text: hasStable ? '• Лоадер: Fabric stable OK' : (hasAny ? '• Лоадер: Fabric dev/unstable (возможны баги)' : '• Лоадер: Fabric не найден для этой версии')
+      });
+    } catch {
+      checks.push({ key: 'healthLoader', ok: false, text: '• Лоадер: проверка Fabric не удалась' });
+    }
+  } else if (loaderMode === 'neoforge') {
+    try {
+      const baseVersion = normalizeBaseVersion(requested);
+      const r = await window.noc.neoforgeVersions(baseVersion, true);
+      const hasAny = !!(r?.ok && Array.isArray(r.builds) && r.builds.length);
+      const hasStable = !!(r?.ok && Array.isArray(r.builds) && r.builds.some(v => !/beta/i.test(String(v))));
+      checks.push({
+        key: 'healthLoader',
+        ok: hasAny,
+        text: hasStable ? '• Лоадер: NeoForge stable OK' : (hasAny ? '• Лоадер: NeoForge только beta (возможны баги)' : '• Лоадер: NeoForge не найден для этой версии')
+      });
+    } catch {
+      checks.push({ key: 'healthLoader', ok: false, text: '• Лоадер: проверка NeoForge не удалась' });
     }
   } else {
     checks.push({ key: 'healthLoader', ok: true, text: `• Лоадер: ${loaderMode}` });
@@ -703,21 +882,48 @@ function setPickedVersionText() {
   const el = $('#pickedVersion');
   if (!el) return;
 
-  if (loader === 'forge' && state.settings?.selectedForgeBuild) {
-    el.textContent = shortVer(`${v} • Forge ${state.settings.selectedForgeBuild}`, 34);
-    el.title = `${v} • Forge ${state.settings.selectedForgeBuild}`;
-    return;
-  }
-  if (loader === 'optifine' && state.settings?.selectedOptiFineBuild?.patch) {
+  const heroVer = $('#pickedVersionHero');
+  const heroLoader = $('#loaderHero');
+
+  const loaderLabel =
+    loader === 'vanilla' ? 'Vanilla' :
+    loader === 'fabric' ? 'Fabric' :
+    loader === 'forge' ? 'Forge' :
+    loader === 'neoforge' ? 'NeoForge' :
+    loader === 'optifine' ? 'OptiFine' :
+    String(loader || '—');
+
+  if (heroLoader) heroLoader.textContent = loaderLabel;
+
+  let display = '';
+  let fullTitle = '';
+
+  if (loader === 'fabric' && state.settings?.selectedFabricLoader) {
+    fullTitle = `${v} • Fabric ${state.settings.selectedFabricLoader}`;
+    display = shortVer(fullTitle, 34);
+  } else if (loader === 'forge' && state.settings?.selectedForgeBuild) {
+    fullTitle = `${v} • Forge ${state.settings.selectedForgeBuild}`;
+    display = shortVer(fullTitle, 34);
+  } else if (loader === 'neoforge' && state.settings?.selectedNeoForgeVersion) {
+    fullTitle = `${v} • NeoForge ${state.settings.selectedNeoForgeVersion}`;
+    display = shortVer(fullTitle, 34);
+  } else if (loader === 'optifine' && state.settings?.selectedOptiFineBuild?.patch) {
     const b = state.settings.selectedOptiFineBuild;
-    const full = `${v} • OptiFine ${b.type || ''} ${b.patch || ''}`.trim();
-    el.textContent = shortVer(full, 34);
-    el.title = full;
-    return;
+    fullTitle = `${v} • OptiFine ${b.type || ''} ${b.patch || ''}`.trim();
+    display = shortVer(fullTitle, 34);
+  } else {
+    fullTitle = v;
+    display = shortVer(v, 34);
   }
 
-  el.textContent = shortVer(v, 34);
-  el.title = v;
+  el.textContent = display;
+  el.title = fullTitle;
+
+  // Mirror to hero for the redesigned UI
+  if (heroVer) {
+    heroVer.textContent = display;
+    heroVer.title = fullTitle;
+  }
 }
 
 function showDlBox(show) {
@@ -739,8 +945,44 @@ function setActionLabel(t) {
 }
 
 function normalizeBaseVersion(v) {
-  const m = String(v || '').match(/^(\d+\.\d+(?:\.\d+)?)/);
-  return m ? m[1] : String(v || '');
+  // Keep renderer logic consistent with main.js normalizeBaseMcVersion:
+  // we want the *Minecraft* base version, not the loader version.
+  const raw = String(v || '').trim();
+  const s = raw.replace(/-nocflat$/i, '');
+
+  // Fabric: fabric-loader-<loaderVersion>-<mcVersion>
+  let m = s.match(/^fabric-loader-[^-]+-(\d+\.\d+(?:\.\d+)?)/i);
+  if (m) return m[1];
+
+  // Quilt: quilt-loader-<loaderVersion>-<mcVersion>
+  m = s.match(/^quilt-loader-[^-]+-(\d+\.\d+(?:\.\d+)?)/i);
+  if (m) return m[1];
+
+  // Forge: usually starts with mcVersion
+  m = s.match(/^(\d+\.\d+(?:\.\d+)?)/);
+  if (m) return m[1];
+
+  // Fallback: use the LAST mc-like token if present
+  const all = [...s.matchAll(/(\d+\.\d+(?:\.\d+)?)/g)].map(x => x[1]);
+  if (all.length) return all[all.length - 1];
+
+  return s;
+}
+
+function resolvePseudoBase(base) {
+  // For UI comparisons (installed profiles), resolve latest-* to concrete ids.
+  const b = String(base || '').trim();
+  if (b === 'latest-release') {
+    const rel = (state?.versions || []).filter(v => v?.type === 'release');
+    rel.sort((a,b)=> new Date(b.releaseTime||0) - new Date(a.releaseTime||0));
+    return rel[0]?.id || b;
+  }
+  if (b === 'latest-snapshot') {
+    const sn = (state?.versions || []).filter(v => v?.type === 'snapshot');
+    sn.sort((a,b)=> new Date(b.releaseTime||0) - new Date(a.releaseTime||0));
+    return sn[0]?.id || b;
+  }
+  return b;
 }
 
 function getSelectedBaseVersion() {
@@ -749,13 +991,21 @@ function getSelectedBaseVersion() {
 }
 
 function findInstalledLoaderProfile(loaderMode, requested, profiles) {
-  const base = normalizeBaseVersion(requested);
+  const base = resolvePseudoBase(normalizeBaseVersion(requested));
   const list = Array.isArray(profiles) ? profiles : [];
+  const byBase = (p) => normalizeBaseVersion(p?.baseVersion || '') === base;
+
+  if (loaderMode === 'fabric') {
+    return list.find(p => p.kind === 'fabric' && byBase(p)) || list.find(p => p.kind === 'fabric' && String(p.id).includes(base)) || null;
+  }
   if (loaderMode === 'forge') {
-    return list.find(p => p.kind === 'forge' && String(p.id).includes(base)) || null;
+    return list.find(p => p.kind === 'forge' && byBase(p)) || list.find(p => p.kind === 'forge' && String(p.id).includes(base)) || null;
+  }
+  if (loaderMode === 'neoforge') {
+    return list.find(p => p.kind === 'neoforge' && byBase(p)) || list.find(p => p.kind === 'neoforge') || null;
   }
   if (loaderMode === 'optifine') {
-    const matches = list.filter(p => p.kind === 'optifine' && String(p.id).includes(base));
+    const matches = list.filter(p => p.kind === 'optifine' && (byBase(p) || String(p.id).includes(base)));
     const stable = matches.find(p => !String(p.id).toLowerCase().includes('_pre'));
     return stable || matches[0] || null;
   }
@@ -814,7 +1064,7 @@ function updateActionButton() {
   // Minimal launcher-like labels: one "Установить" / "Играть" without extra words.
   let label = state.installed ? 'Играть' : 'Установить';
   // If a loader is selected but not installed yet, we still show "Установить".
-  if (loaderMode === 'forge' || loaderMode === 'optifine') {
+  if (loaderMode === 'forge' || loaderMode === 'neoforge' || loaderMode === 'fabric' || loaderMode === 'optifine') {
     label = state.loaderInstalled ? 'Играть' : 'Установить';
   }
   // (UI авторизации скрыт)
@@ -866,12 +1116,12 @@ function setRunning(on) {
 async function loadSettings() {
   state.settings = await window.noc.settingsGet();
 
-  // Fabric removed from this build: if an old settings.json still has it, force a supported loader.
+  // Supported loaders in this UI.
   const allowedLoaders = new Set(['vanilla', 'forge', 'optifine']);
   if (!allowedLoaders.has(state.settings.loaderMode)) {
-    state.settings.loaderMode = 'forge';
+    state.settings.loaderMode = 'vanilla';
     try {
-      await window.noc.settingsSet({ loaderMode: 'forge' });
+      await window.noc.settingsSet({ loaderMode: 'vanilla' });
     } catch {}
   }
 
@@ -897,7 +1147,8 @@ async function loadSettings() {
   if ($('#bedrockDemoMode')) $('#bedrockDemoMode').checked = !!state.settings.bedrockDemoMode;
   if ($('#fpsBoostMode')) $('#fpsBoostMode').checked = !!state.settings.fpsBoostMode;
   if ($('#fpsPreset')) $('#fpsPreset').value = state.settings.fpsPreset || 'safe';
-  if ($('#loaderMode')) $('#loaderMode').value = state.settings.loaderMode || 'forge';
+  if ($('#loaderMode')) $('#loaderMode').value = state.settings.loaderMode || 'vanilla';
+  try { syncLoaderDropdown(); } catch (_) {}
 
   applyPerformanceMode();
 
@@ -1002,7 +1253,24 @@ async function chooseLoaderBuild(baseVersion) {
   if (loader === 'vanilla') return null;
 
   if (loader === 'fabric') {
-    return null;
+    const r = await window.noc.fabricVersions(baseVersion);
+    if (!r?.ok || !Array.isArray(r.loaders) || !r.loaders.length) throw new Error(r?.error || 'Нет Fabric builds');
+    const stable = r.loaders.filter(l => !!l?.stable).map(l => String(l.version));
+    const all = r.loaders.map(l => String(l.version));
+    const current = String(state.settings?.selectedFabricLoader || '');
+    const pool = stable.length ? stable : all;
+    const pick = pool.includes(current) ? current : pool[0];
+    return { selectedFabricLoader: pick };
+  }
+
+  if (loader === 'neoforge') {
+    const r = await window.noc.neoforgeVersions(baseVersion, true);
+    if (!r?.ok || !Array.isArray(r.builds) || !r.builds.length) throw new Error(r?.error || 'Нет NeoForge builds');
+    const stable = r.builds.filter(v => !/beta/i.test(String(v)));
+    const pool = stable.length ? stable : r.builds;
+    const current = String(state.settings?.selectedNeoForgeVersion || '');
+    const pick = pool.includes(current) ? current : pool[0];
+    return { selectedNeoForgeVersion: pick };
   }
 
   if (loader === 'forge') {
@@ -1017,13 +1285,11 @@ async function chooseLoaderBuild(baseVersion) {
   if (!r?.ok || !r.builds?.length) throw new Error(r?.error || 'Нет OptiFine builds');
 
   const stable = r.builds.filter(b => !/pre/i.test(String(b.patch || '')));
-  if (!stable.length) {
-    throw new Error(`Для ${baseVersion} есть только pre-сборки OptiFine (они нестабильны). Выбери соседний релиз MC (например 1.21.1).`);
-  }
+  const pool = stable.length ? stable : r.builds;
 
   const cur = state.settings?.selectedOptiFineBuild;
-  const currentMatch = cur && stable.find(b => b.type === cur.type && b.patch === cur.patch);
-  const pick = currentMatch || stable[0];
+  const currentMatch = cur && pool.find(b => b.type === cur.type && b.patch === cur.patch);
+  const pick = currentMatch || pool[0];
   return { selectedOptiFineBuild: { type: pick.type, patch: pick.patch, mcversion: pick.mcversion } };
 }
 
@@ -1058,12 +1324,12 @@ async function renderInstalledProfilesList() {
     const el = document.createElement('div');
     const isSelected = selectedNow === p.id;
     el.className = `item mcItem ${isSelected ? 'selected' : ''}`;
-    const kindMap = { vanilla: 'Vanilla', forge: 'Forge', optifine: 'OptiFine', fabric: 'Fabric' };
+    const kindMap = { vanilla: 'Vanilla', forge: 'Forge', neoforge: 'NeoForge', optifine: 'OptiFine', fabric: 'Fabric' };
     const kind = kindMap[p.kind] || p.kind || '—';
     el.innerHTML = `
       <div class="mcItemLeft">
         <div class="mcVer mono">${p.id}</div>
-        <div class="mcSub">Локально • ${kind}</div>
+        <div class="mcSub">Локально • ${kind}${p.baseVersion && p.baseVersion !== p.id ? ` • база ${p.baseVersion}` : ''}</div>
       </div>
       <div class="mcItemRight">
         <div class="badge mcBadge">Установлено</div>
@@ -1072,11 +1338,45 @@ async function renderInstalledProfilesList() {
     const pickBtn = el.querySelector('[data-pick]');
     if (pickBtn) {
       pickBtn.addEventListener('click', async () => {
-        $('#versionSelect').value = p.id;
-        state.settings = await window.noc.settingsSet({ lastVersion: p.id });
+        // When selecting an installed profile, map it back to (base version + loader)
+        // so the main UI stays consistent.
+        const patch = {};
+        const kind = String(p.kind || 'vanilla');
+        const base = p.baseVersion || p.id;
+
+        if (kind === 'vanilla') {
+          patch.loaderMode = 'vanilla';
+          patch.lastVersion = p.id;
+        } else if (kind === 'fabric') {
+          patch.loaderMode = 'fabric';
+          patch.lastVersion = base;
+          const m = String(p.id).match(/^fabric-loader-([^-]+)-/i);
+          if (m) patch.selectedFabricLoader = m[1];
+        } else if (kind === 'forge') {
+          patch.loaderMode = 'forge';
+          patch.lastVersion = base;
+          const m = String(p.id).toLowerCase().match(/forge-([0-9.]+(?:-[^\s]+)?)$/);
+          if (m) patch.selectedForgeBuild = m[1];
+        } else if (kind === 'neoforge') {
+          patch.loaderMode = 'neoforge';
+          patch.lastVersion = base;
+          const m = String(p.id).toLowerCase().match(/neoforge-([0-9.]+(?:-[^\s]+)?)$/);
+          if (m) patch.selectedNeoForgeVersion = m[1];
+        } else if (kind === 'optifine') {
+          patch.loaderMode = 'optifine';
+          patch.lastVersion = base;
+          // We'll auto-pick a stable OptiFine build for that base version later.
+        } else {
+          patch.lastVersion = base;
+        }
+
+        state.settings = await window.noc.settingsSet(patch);
+        if ($('#versionSelect')) $('#versionSelect').value = state.settings.lastVersion || base;
+        if ($('#loaderMode')) $('#loaderMode').value = state.settings.loaderMode || patch.loaderMode || 'vanilla';
+        try { syncLoaderDropdown(); } catch (_) {}
         applyMini();
         setPickedVersionText();
-        setStatus(`Выбрана установленная версия ${p.id}`);
+        setStatus(`Выбрана установленная версия (${kind})`);
         closeModal('modalVersions');
         await refreshInstallState();
       });
@@ -1278,7 +1578,68 @@ async function doPlay() {
     let chosen = requested;
     let alreadyInstalled = false;
 
-    if (loaderMode === 'forge') {
+    if (loaderMode === 'fabric') {
+      await refreshInstallState();
+      if (state.loaderInstalled && state.resolvedLoaderProfile) {
+        const ex = await window.noc.profileExists(state.resolvedLoaderProfile);
+        if (!ex?.exists) {
+          const reinstall = window.confirm('Fabric профиль не найден в папке versions. Переустановить Fabric?');
+          if (!reinstall) return;
+          state.loaderInstalled = false;
+          state.resolvedLoaderProfile = null;
+        } else {
+          chosen = state.resolvedLoaderProfile;
+          alreadyInstalled = true;
+        }
+      }
+
+      if (!alreadyInstalled) {
+        const baseVersion = normalizeBaseVersion(requested);
+        await ensureVanillaWithProgress(baseVersion, username);
+
+        setStatus('Ставлю Fabric...');
+        const fr = await window.noc.installFabric(baseVersion, state.settings?.selectedFabricLoader || '');
+        if (!fr?.ok) {
+          setStatus(`Fabric ошибка: ${fr?.error || 'unknown'}`);
+          return;
+        }
+        chosen = fr.versionId;
+        alreadyInstalled = true;
+      }
+
+    } else if (loaderMode === 'neoforge') {
+      await refreshInstallState();
+      if (state.loaderInstalled && state.resolvedLoaderProfile) {
+        const ex = await window.noc.profileExists(state.resolvedLoaderProfile);
+        if (!ex?.exists) {
+          const reinstall = window.confirm('NeoForge профиль не найден в папке versions. Переустановить NeoForge?');
+          if (!reinstall) return;
+          state.loaderInstalled = false;
+          state.resolvedLoaderProfile = null;
+        } else {
+          chosen = state.resolvedLoaderProfile;
+          alreadyInstalled = true;
+        }
+      }
+
+      if (!alreadyInstalled) {
+        const baseVersion = normalizeBaseVersion(requested);
+        await ensureVanillaWithProgress(baseVersion, username);
+
+        const sel = String(state.settings?.selectedNeoForgeVersion || '');
+        const allowBetas = /beta/i.test(sel);
+
+        setStatus('Ставлю NeoForge...');
+        const nr = await window.noc.installNeoForge(baseVersion, sel, allowBetas);
+        if (!nr?.ok) {
+          setStatus(`NeoForge ошибка: ${nr?.error || 'unknown'}`);
+          return;
+        }
+        chosen = nr.versionId;
+        alreadyInstalled = true;
+      }
+
+    } else if (loaderMode === 'forge') {
       await refreshInstallState();
       if (state.loaderInstalled && state.resolvedLoaderProfile) {
         const ex = await window.noc.profileExists(state.resolvedLoaderProfile);
@@ -1325,7 +1686,7 @@ async function doPlay() {
         alreadyInstalled = true;
       }
 
-      } else if (loaderMode === 'optifine') {
+    } else if (loaderMode === 'optifine') {
       await refreshInstallState();
       if (state.loaderInstalled && state.resolvedLoaderProfile) {
         const ex = await window.noc.profileExists(state.resolvedLoaderProfile);
@@ -1626,6 +1987,18 @@ function setMode(mode) {
 
   $('#modeJava')?.classList.toggle('active', mode === 'java');
   $('#modeBedrock')?.classList.toggle('active', mode === 'bedrock');
+  // Update header title + accessibility state
+  const ed = $('#editionTitle');
+  if (ed) ed.textContent = mode === 'bedrock' ? 'MINECRAFT: ИЗДАНИЕ BEDROCK' : 'MINECRAFT: ИЗДАНИЕ JAVA';
+  $('#modeJava')?.setAttribute('aria-selected', mode === 'java' ? 'true' : 'false');
+  $('#modeBedrock')?.setAttribute('aria-selected', mode === 'bedrock' ? 'true' : 'false');
+
+
+  // Top tabs are Java-only (Bedrock is a separate game)
+  $('#topTabs')?.classList.toggle('hidden', mode !== 'java');
+
+  // Hide Java-only hero meta (selected version/loader) in Bedrock mode
+  $('#heroMeta')?.classList.toggle('hidden', mode !== 'java');
 
   $('#javaControls')?.classList.toggle('hidden', mode !== 'java');
   $('#javaOnlineRow')?.classList.toggle('hidden', mode !== 'java');
@@ -1869,44 +2242,36 @@ async function applySync() {
 async function openModrinthCatalogFromUI() {
   const mcVersion = getSelectedBaseVersion();
   const loader = String($('#loaderMode')?.value || state.settings?.loaderMode || 'vanilla');
-  const url = `https://modrinth.com/mods?${new URLSearchParams({ ...(mcVersion ? { g: mcVersion } : {}), ...((loader === 'fabric' || loader === 'forge' || loader === 'quilt' || loader === 'neoforge') ? { l: loader } : {}) }).toString()}`;
-
-  // 1) preferred: main-process catalog window
   try {
-    if (window.noc?.openCatalog) {
-      const r = await window.noc.openCatalog({ provider: 'modrinth', mcVersion, loader });
-      if (r?.ok) return;
-    }
+    const r = await window.noc.openCatalog({ provider: 'modrinth', mcVersion, loader });
+    if (r?.ok) return;
   } catch (_) {}
 
-  // 2) fallback: generic in-app web window
+  const params = new URLSearchParams();
+  if (mcVersion) params.set('g', mcVersion);
+  if (['fabric','forge','quilt','neoforge'].includes(loader)) params.set('l', loader);
+  const url = `https://modrinth.com/mods?${params.toString()}`;
   try {
-    if (window.noc?.webOpen) {
-      const r2 = await window.noc.webOpen({ key: 'modrinth', url, title: 'Modrinth' });
-      if (r2?.ok) return;
-    }
+    const r2 = await window.noc.webOpen({ key: 'modrinth', url, title: 'Modrinth' });
+    if (r2?.ok) return;
   } catch (_) {}
-
-  // 3) last fallback: external browser
-  try {
-    if (window.noc?.shellOpenExternal) {
-      const r3 = await window.noc.shellOpenExternal(url);
-      if (r3?.ok) {
-        setStatus('Modrinth открыт во внешнем браузере');
-        return;
-      }
-    }
-  } catch (_) {}
-
-  setStatus('Modrinth: не удалось открыть каталог');
+  try { await window.noc.shellOpenExternal(url); } catch (_) {}
 }
 
 function wireUI() {
+  // Custom loader dropdown (prevents native white select menu)
+  try { initLoaderDropdown(); } catch (_) {}
+
   $('#modeJava')?.addEventListener('click', () => setMode('java'));
   $('#modeBedrock')?.addEventListener('click', () => setMode('bedrock'));
 
   $('#btnPickVersion')?.addEventListener('click', async () => {
     setVersionsView('online');
+    // Default: show Releases first
+    const tf = $('#typeFilter');
+    if (tf) tf.value = 'release';
+    const vs = $('#versionSearch');
+    if (vs) vs.value = '';
     openModal('modalVersions');
     renderVersionsList();
   });
@@ -1936,9 +2301,19 @@ function wireUI() {
 
   // Bottom library button (mods/textures/shaders)
   $('#btnOpenLibrary')?.addEventListener('click', async () => {
+    // highlight in sidebar
+    try {
+      document.querySelectorAll('.sbNav .sbItem').forEach(b => b.classList.toggle('active', b.id === 'btnOpenLibrary'));
+    } catch (_) {}
     try { await openModsModal(); } catch (e) { setStatus('Ошибка: ' + (e?.message || e)); }
   });
-  $('#btnOpenModrinth')?.addEventListener('click', () => openModrinthCatalogFromUI());
+  on('btnOpenModrinth', 'click', async () => {
+    try {
+      document.querySelectorAll('.sbNav .sbItem').forEach(b => b.classList.toggle('active', b.id === 'btnOpenModrinth'));
+    } catch (_) {}
+    setStatus('Открываю Modrinth…');
+    await openModrinthCatalogFromUI();
+  });
 
   // Library tabs
   document.querySelectorAll('#libraryTabs .segBtn')?.forEach(btn => {
@@ -2007,6 +2382,45 @@ function wireUI() {
     renderProfilesList();
     openModal('modalProfiles');
   });
+
+  // -------------------------------------------------------------------------
+  // Redesigned navigation (Minecraft Launcher inspired)
+  // -------------------------------------------------------------------------
+  const setTopTabActive = (id) => {
+    document.querySelectorAll('.topTabs .tabBtn').forEach(b => {
+      b.classList.toggle('active', b.id === id);
+    });
+  };
+  const setSidebarActive = (id) => {
+    document.querySelectorAll('.sbNav .sbItem').forEach(b => {
+      b.classList.toggle('active', b.id === id);
+    });
+  };
+
+  // "Играть"
+  $('#navPlay')?.addEventListener('click', () => {
+    setTopTabActive('navPlay');
+  });
+
+  // "Установки" is handled by the existing Profiles click above; here we only mark active.
+  $('#btnProfiles')?.addEventListener('click', () => setTopTabActive('btnProfiles'));
+
+  // "Скины" -> Settings modal (focus skin mode)
+  $('#tabSkins')?.addEventListener('click', () => {
+    setTopTabActive('tabSkins');
+    openModal('modalSettings');
+    setTimeout(() => $('#skinMode')?.focus(), 60);
+  });
+
+  // Sidebar
+  on('sbNews', 'click', async () => {
+    setSidebarActive('sbNews');
+    setStatus('Открываю Telegram…');
+    try {
+      await window.noc.shellOpenExternal('https://t.me/bundstraze');
+    } catch (_) {}
+  });
+
   $('#btnCloseProfiles')?.addEventListener('click', () => closeModal('modalProfiles'));
   $('#btnBedrockVersions')?.addEventListener('click', async () => {
     await renderBedrockVersionsDemo();
@@ -2518,8 +2932,16 @@ $('#btnImportDot')?.addEventListener('click', async () => {
 $('#btnOpenSettings')?.addEventListener('click', () => { setTimeout(refreshSnapshotsUI, 50); });
 
 
-// Resources / Cleanup / Sync
-$('#btnResources')?.addEventListener('click', openResources);
+// Updates / Cleanup / Sync
+$('#btnResources')?.addEventListener('click', async () => {
+  const url = 'https://github.com/NocCorporation/NocLauncher';
+  setStatus('Открываю обновления…');
+  try {
+    const r = await window.noc.webOpen({ key: 'updates', url, title: 'Обновления NocLauncher' });
+    if (r?.ok) return;
+  } catch (_) {}
+  try { await window.noc.shellOpenExternal(url); } catch (_) {}
+});
 $('#btnCleanup')?.addEventListener('click', openCleanup);
 $('#btnSyncSettings')?.addEventListener('click', openSync);
 

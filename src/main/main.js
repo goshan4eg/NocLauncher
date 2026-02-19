@@ -190,7 +190,8 @@ function analyzeInstalledMods(settings, gameDir) {
   const mods = [];
   const idToFiles = new Map();
 
-  const wantLoader = String(settings?.loaderMode || 'vanilla').toLowerCase(); // fabric|forge|vanilla
+  const wantLoader = String(settings?.loaderMode || 'vanilla').toLowerCase(); // fabric|forge|neoforge|vanilla
+  const wantForgeLike = (wantLoader === 'forge' || wantLoader === 'neoforge');
   for (const fn of jars) {
     const fp = path.join(modsDir, fn);
     try {
@@ -226,7 +227,7 @@ function analyzeInstalledMods(settings, gameDir) {
 
       if (wantLoader === 'fabric' && loaderDetected === 'forge') {
         issues.push({ type: 'loader', file: fn, message: 'Forge-мод в Fabric-профиле' });
-      } else if (wantLoader === 'forge' && loaderDetected === 'fabric') {
+      } else if (wantForgeLike && loaderDetected === 'fabric') {
         issues.push({ type: 'loader', file: fn, message: 'Fabric-мод в Forge-профиле' });
       }
 
@@ -318,6 +319,7 @@ function currentLoaderAndVersion(settings) {
   let loaders = [];
   if (loaderMode === 'fabric') loaders = ['fabric'];
   else if (loaderMode === 'forge') loaders = ['forge', 'neoforge']; // allow neo if mod is tagged
+  else if (loaderMode === 'neoforge') loaders = ['neoforge', 'forge']; // show NeoForge first, but keep Forge-compatible mods
   else loaders = []; // vanilla
   return { loaderMode, loaders, gameVersion };
 }
@@ -682,17 +684,17 @@ let mainReady = false;
 
 function createSplashWindow() {
   splashWin = new BrowserWindow({
-    width: 760,
-    height: 460,
+    width: 700,
+    height: 230,
     frame: false,
-    transparent: false,
+    transparent: true,
     resizable: false,
     movable: true,
     minimizable: false,
     maximizable: false,
     show: false,
     alwaysOnTop: true,
-    backgroundColor: '#08050f',
+    backgroundColor: '#00000000',
     icon: path.join(ASSETS_DIR, 'icon.png'),
     webPreferences: {
       contextIsolation: true,
@@ -1353,6 +1355,30 @@ function buildFlattenedVersionProfile(gameDir, versionId) {
     if (!flat.inheritsFrom) delete flat.inheritsFrom;
 
     const sanitized = dedupeSingletonGameArgs(flat);
+
+    // NeoForge/Forge installers may emit a JVM arg with placeholder `${library_directory}`.
+    // Many third-party launcher libs do NOT substitute it, so we bake an absolute path into the flattened profile.
+    try {
+      const libDir = path.join(gameDir, 'libraries');
+      const repl = (v) => (typeof v === 'string'
+        ? v.replace(/\$\{library_directory\}/g, libDir).replace(/\$\{libraryDirectory\}/g, libDir)
+        : v);
+
+      const jvm = sanitized?.arguments?.jvm;
+      if (Array.isArray(jvm)) {
+        sanitized.arguments.jvm = jvm.map((a) => {
+          if (typeof a === 'string') return repl(a);
+          if (a && typeof a === 'object') {
+            const vv = a.value;
+            if (typeof vv === 'string') a.value = repl(vv);
+            else if (Array.isArray(vv)) a.value = vv.map(repl);
+            return a;
+          }
+          return a;
+        });
+      }
+    } catch (_) {}
+
     const outPath = path.join(flatDir, `${flatId}.json`);
     fs.writeFileSync(outPath, JSON.stringify(sanitized, null, 2));
     return flatId;
@@ -2968,8 +2994,8 @@ ipcMain.handle('mods:installModrinth', async (_e, payload) => {
   const projectId = String(payload?.projectId || '');
   if (!projectId) return { ok:false, error:'projectId required' };
   const { loaderMode } = currentLoaderAndVersion(settings);
-  if (loaderMode !== 'fabric' && loaderMode !== 'forge') {
-    return { ok:false, error:'Выберите Fabric или Forge в настройках/лоадере' };
+  if (loaderMode !== 'fabric' && loaderMode !== 'forge' && loaderMode !== 'neoforge') {
+    return { ok:false, error:'Выберите Fabric / Forge / NeoForge в настройках/лоадере' };
   }
   const r = await installModrinthProjectRecursive(projectId, settings, gameDir);
   return { ok:true, installed: r.installed || 1 };
@@ -2980,8 +3006,8 @@ ipcMain.handle('mods:updateAll', async () => {
   const gameDir = resolveActiveGameDir(settings);
   await autoSnapshotBeforeModsChange(settings, gameDir, 'Auto: before update all mods');
   const { loaderMode } = currentLoaderAndVersion(settings);
-  if (loaderMode !== 'fabric' && loaderMode !== 'forge') {
-    return { ok:false, error:'Выберите Fabric или Forge' };
+  if (loaderMode !== 'fabric' && loaderMode !== 'forge' && loaderMode !== 'neoforge') {
+    return { ok:false, error:'Выберите Fabric / Forge / NeoForge' };
   }
   return await updateAllModrinth(settings, gameDir);
 });
@@ -4163,10 +4189,11 @@ ipcMain.handle('mc:launch', async (_e, payload) => {
   }
 
   if (isUnstableOptiFineProfile(resolved.id)) {
-    const msg = `Выбран pre-билд OptiFine (${resolved.id}). Он нестабилен и часто крашит. Выбери стабильный OptiFine без _pre.`;
+    // User asked for a guaranteed installation flow even when only unstable releases exist.
+    // We still warn loudly, but we allow launch.
+    const msg = `Выбран pre-билд OptiFine (${resolved.id}). Он может быть нестабилен и крашить.`;
     sendLog('warn', msg);
-    sendMcState('error', { error: msg, version: resolved.id, logPath });
-    return { ok: false, error: msg };
+    sendMcState('warn', { warning: msg, version: resolved.id, logPath });
   }
 
   await ensureJavaServerInList(gameDir);
@@ -4451,7 +4478,7 @@ if (preset && preset !== 'auto') {
   // Without these, SecureJarHandler/UnionFS can throw InaccessibleObjectException.
   try {
     const mcMain = String(launchMeta?.mainClass || '').trim();
-    const isModLauncher = mcMain.includes('cpw.mods.bootstraplauncher.') || mcMain.includes('cpw.mods.modlauncher.') || mcMain.includes('cpw.mods');
+    const isModLauncher = mcMain.includes('cpw.mods.bootstraplauncher.') || mcMain.includes('cpw.mods.modlauncher.') || mcMain.includes('cpw.mods') || mcMain.includes('net.neoforged') || mcMain.includes('net.minecraftforge');
     const javaMajor = getJavaMajor(javaPath);
     if (isModLauncher && javaMajor >= 17) {
       const baseArgs = Array.isArray(opts.customArgs) ? opts.customArgs.slice() : [];
@@ -4482,6 +4509,33 @@ if (preset && preset !== 'auto') {
     }
   } catch (e) {
     sendLog('warn', `Forge/ModLauncher JPMS opens apply failed: ${String(e?.message || e)}`);
+  }
+
+  // NeoForge / Forge (FML/ModLauncher) expect system property `libraryDirectory` to point to the libraries directory.
+  // Some version JSONs use a placeholder like ${library_directory} which minecraft-launcher-core does NOT substitute.
+  // We append an explicit override here (last one wins) to prevent: "libraryDirectory must point to the libraries directory".
+  try {
+    const mcMain = String(launchMeta?.mainClass || '').trim();
+    const isForgeLike = /neoforge/i.test(launchVersionId) || /forge/i.test(launchVersionId) ||
+      /net\.neoforged\./i.test(mcMain) || /net\.minecraftforge\./i.test(mcMain) || /cpw\.mods\./i.test(mcMain);
+
+    if (isForgeLike) {
+      const libDir = path.join(gameDir, 'libraries');
+      const baseArgs = Array.isArray(opts.customArgs) ? opts.customArgs.slice() : [];
+
+      // Always append (override)
+      baseArgs.push(`-DlibraryDirectory=${libDir}`);
+
+      // Harmless safety flag (also reduces noisy exploit warnings in some packs)
+      if (!baseArgs.some((a) => typeof a === 'string' && a.startsWith('-Dlog4j2.formatMsgNoLookups='))) {
+        baseArgs.push('-Dlog4j2.formatMsgNoLookups=true');
+      }
+
+      opts.customArgs = baseArgs;
+      sendLog('info', 'Forge/NeoForge: applied -DlibraryDirectory override');
+    }
+  } catch (e) {
+    sendLog('warn', `Forge/NeoForge libraryDirectory apply failed: ${String(e?.message || e)}`);
   }
 
   sendLog('info', `${prepareOnly ? 'Подготовка' : (alreadyInstalled ? 'Запуск' : 'Установка')} Minecraft: ${resolved.id} -> ${launchVersionId} (dir: ${gameDir})`);
@@ -4796,13 +4850,21 @@ async function getFabricInstallerVersionsList() {
 }
 
 
-async function getFabricLoaderComboRobust(requestedMcVersion) {
+async function getFabricLoaderComboRobust(requestedMcVersion, preferredLoaderVersion) {
   // Returns { mcVersionUsed, loaderVersion } ensuring the combo exists on Fabric meta.
   // 1) Exact
   try {
+    // If user picked a specific loader version, validate it exists for this MC version.
+    if (preferredLoaderVersion) {
+      const pv = String(preferredLoaderVersion).trim();
+      // This endpoint returns 200 if combo exists, 404 otherwise.
+      const checkUrl = `https://meta.fabricmc.net/v2/versions/loader/${encodeURIComponent(requestedMcVersion)}/${encodeURIComponent(pv)}`;
+      await fetchJson(checkUrl, loadSettings());
+      return { mcVersionUsed: requestedMcVersion, loaderVersion: pv };
+    }
     const v = await getFabricVersionsForMc(requestedMcVersion);
     return { mcVersionUsed: requestedMcVersion, loaderVersion: v.loaderVersion };
-  } catch (_) {}
+  } catch (_) {} 
 
   // 2) Closest release in same minor
   const manifest = await getManifest().catch(() => store.get('manifestCache'));
@@ -4861,7 +4923,7 @@ async function ensureFabricLoaderMainJar(gameDir, versionId, log = () => {}) {
   }
 }
 
-async function installFabricForVersion(mcVersion, gameDir, javaPathHint) {
+async function installFabricForVersion(mcVersion, gameDir, javaPathHint, preferredLoaderVersion) {
   // Ironclad approach:
   // 1) Ensure base vanilla files are installed.
   // 2) Resolve a Fabric loader version that exists for the chosen (or closest) MC version.
@@ -4870,7 +4932,7 @@ async function installFabricForVersion(mcVersion, gameDir, javaPathHint) {
   //    and build a compatible profile from launcherMeta.
   // This removes dependency on Fabric Installer CLI (which varies across builds and can break on enums/launcher types).
   const settings = loadSettings();
-  const { mcVersionUsed, loaderVersion } = await getFabricLoaderComboRobust(mcVersion);
+  const { mcVersionUsed, loaderVersion } = await getFabricLoaderComboRobust(mcVersion, preferredLoaderVersion);
   const javaPath = await resolveJavaPathForMc(mcVersionUsed, javaPathHint || '', gameDir);
   await ensureVanillaInstalledBase(mcVersionUsed, gameDir, javaPath);
 
@@ -5066,10 +5128,25 @@ async function ensureLibrariesForVersion(gameDir, versionId) {
 }
 
 async function getForgeBuildsForMc(mcVersion) {
-  const metaUrl = 'https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml';
-  const r = await fetch(metaUrl, { headers: { 'User-Agent': 'NocLauncher/1.0' } });
-  if (!r.ok) throw new Error('Forge metadata недоступен');
-  const xml = await r.text();
+  const metaUrls = [
+    'https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml',
+    // Mirror (BMCLAPI) — helps when the main maven is slow/unavailable.
+    'https://bmclapi2.bangbang93.com/maven/net/minecraftforge/forge/maven-metadata.xml'
+  ];
+
+  let xml = '';
+  let lastErr = null;
+  for (const url of metaUrls) {
+    try {
+      const r = await fetch(url, { headers: { 'User-Agent': 'NocLauncher/1.0' } });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const t = await r.text();
+      if (t && t.includes('<version>')) { xml = t; break; }
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (!xml) throw new Error(`Forge metadata недоступен: ${String(lastErr?.message || lastErr || '')}`);
 
   const re = /<version>([^<]+)<\/version>/g;
   const all = [];
@@ -5085,80 +5162,268 @@ async function getForgeBuildsForMc(mcVersion) {
 }
 
 async function installForgeForVersion(mcVersion, gameDir, javaPathHint, explicitForgeBuild) {
-  const metaUrl = 'https://maven.minecraftforge.net/net/minecraftforge/forge/maven-metadata.xml';
-  const r = await fetch(metaUrl, { headers: { 'User-Agent': 'NocLauncher/1.0' } });
-  if (!r.ok) throw new Error('Forge metadata недоступен');
-  const xml = await r.text();
-
-  const re = /<version>([^<]+)<\/version>/g;
-  const all = [];
-  let m;
-  while ((m = re.exec(xml)) !== null) all.push(m[1]);
-
-  const prefix = `${mcVersion}-`;
-  const candidates = all
-    .filter(v => v.startsWith(prefix))
-    .map(v => v.slice(prefix.length))
-    .filter(Boolean)
-    .sort(compareSemverLike);
-
-  const forgeVer = explicitForgeBuild || candidates[0];
-  if (!forgeVer) throw new Error(`Forge не найден для ${mcVersion}`);
-  if (explicitForgeBuild && !candidates.includes(explicitForgeBuild)) {
+  const candidatesAll = await getForgeBuildsForMc(mcVersion);
+  if (!candidatesAll.length) throw new Error(`Forge не найден для ${mcVersion}`);
+  if (explicitForgeBuild && !candidatesAll.includes(explicitForgeBuild)) {
     throw new Error(`Forge ${explicitForgeBuild} не найден для ${mcVersion}`);
   }
 
-  const installerUrl = `https://maven.minecraftforge.net/net/minecraftforge/forge/${mcVersion}-${forgeVer}/forge-${mcVersion}-${forgeVer}-installer.jar`;
-  const toolsDir = path.join(gameDir, '.noc-tools');
-  fs.mkdirSync(toolsDir, { recursive: true });
-  const installerJar = path.join(toolsDir, `forge-${mcVersion}-${forgeVer}-installer.jar`);
-
-  if (!fs.existsSync(installerJar)) await downloadFile(installerUrl, installerJar);
-
-  const javaPath = await resolveJavaPathForMc(mcVersion, javaPathHint || '', gameDir);
-  await ensureVanillaInstalledBase(mcVersion, gameDir, javaPath);
-
-  let forgeInstalled = false;
+  // We'll try a few candidates if the newest one is broken.
+  const pool = explicitForgeBuild ? [String(explicitForgeBuild)] : candidatesAll.slice(0, 4);
   let lastErr = null;
-  const attemptArgs = [
-    ['-jar', installerJar, '--installClient', gameDir],
-    ['-jar', installerJar, '--installClient']
-  ];
 
-  await runWithOfficialMinecraftJunction(gameDir, async () => {
-    const mapped = createMappedMinecraftEnv(gameDir, 'forge');
+  for (const forgeVer of pool) {
+    try {
+      const toolsDir = path.join(gameDir, '.noc-tools');
+      fs.mkdirSync(toolsDir, { recursive: true });
+      const installerJar = path.join(toolsDir, `forge-${mcVersion}-${forgeVer}-installer.jar`);
 
-    for (const args of attemptArgs) {
-      try {
-        await execFileAsync(javaPath, args, { cwd: gameDir, env: mapped.env, windowsHide: true, maxBuffer: 8 * 1024 * 1024 });
-        forgeInstalled = true;
-        break;
-      } catch (e) {
-        lastErr = e;
+      const rel = `net/minecraftforge/forge/${mcVersion}-${forgeVer}/forge-${mcVersion}-${forgeVer}-installer.jar`;
+      const installerUrls = [
+        `https://maven.minecraftforge.net/${rel}`,
+        `https://bmclapi2.bangbang93.com/maven/${rel}`
+      ];
+
+      if (!fs.existsSync(installerJar) || !isProbablyValidJar(installerJar)) {
+        let got = false;
+        let dlErr = null;
+        for (const u of installerUrls) {
+          try {
+            await downloadFile(u, installerJar);
+            if (isProbablyValidJar(installerJar)) { got = true; break; }
+          } catch (e) {
+            dlErr = e;
+          }
+        }
+        if (!got) throw dlErr || new Error('Не удалось скачать Forge installer');
       }
+
+      const javaPath = await resolveJavaPathForMc(mcVersion, javaPathHint || '', gameDir);
+      await ensureVanillaInstalledBase(mcVersion, gameDir, javaPath);
+
+      let forgeInstalled = false;
+      let instErr = null;
+      const attemptArgs = [
+        ['-jar', installerJar, '--installClient', gameDir],
+        ['-jar', installerJar, '--installClient']
+      ];
+
+      await runWithOfficialMinecraftJunction(gameDir, async () => {
+        const mapped = createMappedMinecraftEnv(gameDir, 'forge');
+
+        for (const args of attemptArgs) {
+          try {
+            await execFileAsync(javaPath, args, { cwd: gameDir, env: mapped.env, windowsHide: true, maxBuffer: 10 * 1024 * 1024 });
+            forgeInstalled = true;
+            break;
+          } catch (e) {
+            instErr = e;
+          }
+        }
+      });
+
+      if (!forgeInstalled) {
+        const err = String(instErr?.stderr || instErr?.stdout || instErr?.message || instErr);
+        throw new Error(`Forge installer error: ${err.slice(0, 600)}`);
+      }
+
+      const versionsDir = path.join(gameDir, 'versions');
+      const dirs = fs.existsSync(versionsDir) ? fs.readdirSync(versionsDir) : [];
+      const found = dirs
+        .filter(d => d.includes(mcVersion) && d.toLowerCase().includes('forge') && d.includes(forgeVer))
+        .sort((a, b) => (fs.statSync(path.join(versionsDir, b)).mtimeMs - fs.statSync(path.join(versionsDir, a)).mtimeMs))[0]
+        || dirs
+          .filter(d => d.includes(mcVersion) && d.toLowerCase().includes('forge'))
+          .sort((a, b) => (fs.statSync(path.join(versionsDir, b)).mtimeMs - fs.statSync(path.join(versionsDir, a)).mtimeMs))[0];
+
+      if (!found) throw new Error('Forge установлен, но профиль не найден');
+
+      // Prefetch Forge libraries for smoother first launch.
+      try { await ensureLibrariesForVersion(gameDir, found); } catch (e) {
+        sendLog('warn', `Forge libs prefetch warning: ${String(e?.message || e)}`);
+      }
+      return { versionId: found, forgeVersion: forgeVer };
+    } catch (e) {
+      lastErr = e;
+      if (explicitForgeBuild) break;
     }
-  });
-
-  if (!forgeInstalled) {
-    const err = String(lastErr?.stderr || lastErr?.stdout || lastErr?.message || lastErr);
-    throw new Error(`Forge installer error: ${err.slice(0, 600)}`);
   }
 
-  const versionsDir = path.join(gameDir, 'versions');
-  const dirs = fs.existsSync(versionsDir) ? fs.readdirSync(versionsDir) : [];
-  const found = dirs
-    .filter(d => d.includes(mcVersion) && d.toLowerCase().includes('forge'))
-    .sort((a, b) => (fs.statSync(path.join(versionsDir, b)).mtimeMs - fs.statSync(path.join(versionsDir, a)).mtimeMs))[0];
+  throw lastErr || new Error('Не удалось установить Forge');
+}
 
-  if (!found) throw new Error('Forge установлен, но профиль не найден');
+// =========================================================
+// NeoForge (Java Edition)
+//  - versions API: https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge
+//  - installer jar: https://maven.neoforged.net/releases/net/neoforged/neoforge/<ver>/neoforge-<ver>-installer.jar
+// =========================================================
 
-  // Prefetch Forge libraries for smoother first launch.
+async function fetchJsonFromFallback(urls, opts = {}) {
+  const list = Array.isArray(urls) ? urls : [String(urls || '')];
+  let lastErr = null;
+  for (const url of list) {
+    if (!url) continue;
+    try {
+      const r = await fetch(url, {
+        headers: {
+          'User-Agent': 'NocLauncher/1.0',
+          'Accept': 'application/json, text/plain, */*',
+          ...(opts.headers || {})
+        },
+        ...(opts.fetch || {})
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error('Не удалось получить JSON');
+}
+
+function mcToNeoForgeLine(mcVersion) {
+  const s = String(mcVersion || '').trim();
+  const parts = s.split('.').filter(Boolean);
+  if (parts[0] === '1') parts.shift();
+  if (parts.length === 1) parts.push('0');
+  return parts.slice(0, 2).join('.');
+}
+
+async function getNeoForgeBuildsForMc(mcVersion, allowBetas = false) {
+  const apiUrls = [
+    'https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge',
+    // fallback (some installations use the k8s host)
+    'https://maven.prod.k8s.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge'
+  ];
+  let versions = [];
   try {
-    await ensureLibrariesForVersion(gameDir, found);
+    const j = await fetchJsonFromFallback(apiUrls);
+    versions = Array.isArray(j?.versions) ? j.versions : [];
   } catch (e) {
-    sendLog('warn', `Forge libs prefetch warning: ${String(e?.message || e)}`);
+    // Fallback: try maven-metadata.xml if API fails
+    try {
+      const metaUrls = [
+        'https://maven.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml',
+        'https://maven.prod.k8s.neoforged.net/releases/net/neoforged/neoforge/maven-metadata.xml'
+      ];
+      let xml = null;
+      for (const u of metaUrls) {
+        try {
+          const r = await fetch(u, { headers: { 'User-Agent': 'NocLauncher/1.0' } });
+          if (r.ok) { xml = await r.text(); break; }
+        } catch (_) {}
+      }
+      if (xml) {
+        const re = /<version>([^<]+)<\/version>/g;
+        let m;
+        while ((m = re.exec(xml)) !== null) versions.push(m[1]);
+      }
+    } catch (_) {}
   }
-  return { versionId: found, forgeVersion: forgeVer };
+
+  const line = mcToNeoForgeLine(mcVersion);
+  const prefix = `${line}.`;
+  const filtered = versions.filter(v => String(v).startsWith(prefix));
+  const stable = filtered.filter(v => !/beta/i.test(String(v)));
+  const beta = filtered.filter(v => /beta/i.test(String(v)));
+  stable.sort(compareSemverLike);
+  beta.sort(compareSemverLike);
+  const ordered = stable.length ? stable.concat(beta) : beta;
+  return allowBetas ? ordered : (stable.length ? stable : []);
+}
+
+async function installNeoForgeForVersion(mcVersion, gameDir, javaPathHint, explicitNeoForgeVersion, allowBetas = false) {
+  const buildsAll = await getNeoForgeBuildsForMc(mcVersion, true);
+  if (!buildsAll.length) {
+    throw new Error(`NeoForge не найден для Minecraft ${mcVersion}`);
+  }
+
+  const preferred = allowBetas ? buildsAll : buildsAll.filter(v => !/beta/i.test(String(v)));
+  const candidates = preferred.length ? preferred : buildsAll;
+
+  const pool = explicitNeoForgeVersion ? [String(explicitNeoForgeVersion)] : candidates;
+
+  // We'll try a few candidates if the latest one is broken.
+  const tryList = explicitNeoForgeVersion ? pool : pool.slice(0, 4);
+
+  let lastErr = null;
+  for (const neoVer of tryList) {
+    try {
+      const toolsDir = path.join(gameDir, '.noc-tools');
+      fs.mkdirSync(toolsDir, { recursive: true });
+
+      const installerRel = `net/neoforged/neoforge/${neoVer}/neoforge-${neoVer}-installer.jar`;
+      const installerCandidates = [
+        `https://maven.neoforged.net/releases/${installerRel}`,
+        `https://maven.prod.k8s.neoforged.net/releases/${installerRel}`
+      ];
+
+      const installerJar = path.join(toolsDir, `neoforge-${mcVersion}-${neoVer}-installer.jar`);
+      if (!fs.existsSync(installerJar) || !isProbablyValidJar(installerJar)) {
+        // Try mirrors
+        let got = false;
+        let dlErr = null;
+        for (const u of installerCandidates) {
+          try {
+            await downloadFile(u, installerJar);
+            if (isProbablyValidJar(installerJar)) { got = true; break; }
+          } catch (e) {
+            dlErr = e;
+          }
+        }
+        if (!got) throw dlErr || new Error('Не удалось скачать NeoForge installer');
+      }
+
+      const javaPath = await resolveJavaPathForMc(mcVersion, javaPathHint || '', gameDir);
+      await ensureVanillaInstalledBase(mcVersion, gameDir, javaPath);
+
+      let ok = false;
+      let instErr = null;
+      const attemptArgs = [
+        ['-jar', installerJar, '--install-client', gameDir],
+        ['-jar', installerJar, '--installClient', gameDir],
+        ['-jar', installerJar, '--install-client'],
+        ['-jar', installerJar, '--installClient']
+      ];
+
+      await runWithOfficialMinecraftJunction(gameDir, async () => {
+        const mapped = createMappedMinecraftEnv(gameDir, 'neoforge');
+        for (const args of attemptArgs) {
+          try {
+            await execFileAsync(javaPath, args, { cwd: gameDir, env: mapped.env, windowsHide: true, maxBuffer: 10 * 1024 * 1024 });
+            ok = true;
+            break;
+          } catch (e) {
+            instErr = e;
+          }
+        }
+      });
+
+      if (!ok) {
+        const err = String(instErr?.stderr || instErr?.stdout || instErr?.message || instErr || 'unknown');
+        throw new Error(`NeoForge installer error: ${err.slice(0, 600)}`);
+      }
+
+      const versionsDir = path.join(gameDir, 'versions');
+      const dirs = fs.existsSync(versionsDir) ? fs.readdirSync(versionsDir) : [];
+      const found = dirs
+        .filter(d => d.toLowerCase().includes('neoforge') && d.includes(neoVer))
+        .sort((a, b) => (fs.statSync(path.join(versionsDir, b)).mtimeMs - fs.statSync(path.join(versionsDir, a)).mtimeMs))[0];
+
+      if (!found) throw new Error('NeoForge установлен, но профиль не найден');
+
+      // Prefetch libs for smoother first launch.
+      try { await ensureLibrariesForVersion(gameDir, found); } catch (_) {}
+
+      return { versionId: found, neoforgeVersion: neoVer };
+    } catch (e) {
+      lastErr = e;
+      // If user explicitly chose the build, do not fallback.
+      if (explicitNeoForgeVersion) break;
+    }
+  }
+
+  throw lastErr || new Error('Не удалось установить NeoForge');
 }
 
 function isProbablyValidJar(filePath) {
@@ -5411,6 +5676,19 @@ ipcMain.handle('forge:versions', async (_e, payload) => {
   }
 });
 
+ipcMain.handle('neoforge:versions', async (_e, payload) => {
+  try {
+    const requested = payload?.mcVersion || store.get('lastVersion') || 'latest-release';
+    const normalized = normalizeBaseMcVersion(requested);
+    const resolved = await resolveVersion(normalized);
+    const allowBetas = !!payload?.allowBetas;
+    const builds = await getNeoForgeBuildsForMc(resolved.id, allowBetas);
+    return { ok: true, mcVersion: resolved.id, builds };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e), builds: [] };
+  }
+});
+
 
 ipcMain.handle('fabric:versions', async (_e, payload) => {
   try {
@@ -5453,6 +5731,27 @@ ipcMain.handle('forge:install', async (_e, payload) => {
   }
 });
 
+ipcMain.handle('neoforge:install', async (_e, payload) => {
+  try {
+    const settings = store.store;
+    const gameDir = resolveActiveGameDir(settings);
+    const requested = payload?.mcVersion || settings.lastVersion || 'latest-release';
+    const normalized = normalizeBaseMcVersion(requested);
+    const resolved = await resolveVersion(normalized);
+    const allowBetas = !!payload?.allowBetas;
+    const out = await installNeoForgeForVersion(
+      resolved.id,
+      gameDir,
+      settings.javaPath,
+      payload?.neoforgeVersion || settings.selectedNeoForgeVersion || '',
+      allowBetas
+    );
+    return { ok: true, ...out, mcVersion: resolved.id };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
 
 ipcMain.handle('fabric:install', async (_e, payload) => {
   try {
@@ -5461,7 +5760,8 @@ ipcMain.handle('fabric:install', async (_e, payload) => {
     const requested = payload?.mcVersion || settings.lastVersion || 'latest-release';
     const normalized = normalizeBaseMcVersion(requested);
     const resolved = await resolveVersion(normalized);
-    const out = await installFabricForVersion(resolved.id, gameDir, settings.javaPath);
+    const loaderVersion = payload?.loaderVersion || settings.selectedFabricLoader || '';
+    const out = await installFabricForVersion(resolved.id, gameDir, settings.javaPath, loaderVersion);
     return { ok: true, ...out };
   } catch (e) {
     return { ok: false, error: String(e?.message || e) };
@@ -5488,7 +5788,8 @@ ipcMain.handle('optifine:install', async (_e, payload) => {
 ipcMain.handle('profiles:listInstalled', async () => {
   try {
     const settings = store.store;
-    const versionsDir = path.join(settings.gameDir, 'versions');
+    const gameDir = resolveActiveGameDir(settings);
+    const versionsDir = path.join(gameDir, 'versions');
     if (!fs.existsSync(versionsDir)) return { ok: true, profiles: [] };
     const dirs = fs.readdirSync(versionsDir, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name);
 
@@ -5498,21 +5799,26 @@ ipcMain.handle('profiles:listInstalled', async () => {
       const jsonPath = path.join(base, `${v}.json`);
       if (!fs.existsSync(jsonPath)) continue;
 
+      let parsed = null;
+      try { parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf8')); } catch (_) {}
+
+      // Detect loader type. IMPORTANT: check neoforge BEFORE forge ("neoforge" contains "forge").
       let kind = 'vanilla';
       const low = v.toLowerCase();
-      if (low.includes('forge')) kind = 'forge';
-      if (low.includes('optifine')) kind = 'optifine';
       if (low.includes('fabric-loader')) kind = 'fabric';
+      else if (low.includes('neoforge')) kind = 'neoforge';
+      else if (low.includes('optifine')) kind = 'optifine';
+      else if (low.includes('forge')) kind = 'forge';
 
+      // Determine base Minecraft version (for loader profiles it is usually inheritsFrom)
+      const baseVersion = (parsed?.inheritsFrom && String(parsed.inheritsFrom)) ? String(parsed.inheritsFrom) : v;
+
+      // Installed heuristic: jar exists OR json inheritsFrom (loader profile) OR vanilla json exists.
       let installed = fs.existsSync(path.join(base, `${v}.jar`));
-      if (!installed) {
-        try {
-          const parsed = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
-          installed = !!parsed?.inheritsFrom;
-        } catch (_) {}
-      }
+      if (!installed) installed = !!parsed; // at least has json
+      if (!installed) installed = !!parsed?.inheritsFrom;
 
-      if (installed) profiles.push({ id: v, kind });
+      if (installed) profiles.push({ id: v, kind, baseVersion });
     }
 
     profiles.sort((a,b)=> a.id < b.id ? 1 : -1);
