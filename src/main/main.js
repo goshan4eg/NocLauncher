@@ -3802,14 +3802,37 @@ function resolveBedrockPackageDir() {
     if (!base) return null;
     const pkgs = path.join(base, 'Packages');
     if (!fs.existsSync(pkgs)) return null;
-    const dirs = fs.readdirSync(pkgs, { withFileTypes: true })
+
+    const dirNames = fs.readdirSync(pkgs, { withFileTypes: true })
       .filter(d => d.isDirectory())
       .map(d => d.name);
-    // Prefer the known PFN, otherwise pick any MinecraftUWP package
-    const exact = dirs.find(n => n.startsWith('Microsoft.MinecraftUWP_'));
+
+    const candidates = dirNames
+      .filter(n => /minecraft/i.test(n))
+      .map((name) => {
+        const full = path.join(pkgs, name);
+        const com = path.join(full, 'LocalState', 'games', 'com.mojang');
+        const worlds = path.join(com, 'minecraftWorlds');
+        let score = 0;
+        if (/^microsoft\.minecraftuwp_/i.test(name)) score += 100;
+        if (/minecraftuwp/i.test(name)) score += 40;
+        if (fs.existsSync(com)) score += 30;
+        if (fs.existsSync(worlds)) score += 20;
+        try {
+          const st = fs.statSync(full);
+          score += Math.min(10, Math.floor((Date.now() - (st.mtimeMs || Date.now())) / -86400000));
+        } catch (_) {}
+        return { name, full, score };
+      })
+      .sort((a, b) => b.score - a.score);
+
+    if (candidates.length) return candidates[0].full;
+
+    // Fallback: old behavior (case-insensitive exact PFN prefix)
+    const exact = dirNames.find(n => /^microsoft\.minecraftuwp_/i.test(n));
     if (exact) return path.join(pkgs, exact);
-    const any = dirs.find(n => /Minecraft/i.test(n));
-    return any ? path.join(pkgs, any) : null;
+
+    return null;
   } catch (_) {
     return null;
   }
