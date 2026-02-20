@@ -8,12 +8,16 @@ const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '0.0.0.0';
 const ROOM_TTL_MS = Number(process.env.ROOM_TTL_MS || 60000);
 const MAX_ROOMS_PER_HOST = Number(process.env.MAX_ROOMS_PER_HOST || 3);
+const INVITE_TTL_MS = Number(process.env.INVITE_TTL_MS || 3600000);
 
 /** @type {Map<string, any>} */
 const rooms = new Map();
+/** @type {Map<string, any>} */
+const invites = new Map();
 
 function now() { return Date.now(); }
 function uid() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
+function inviteCode() { return Math.random().toString(36).slice(2, 8).toUpperCase(); }
 
 function send(res, status, payload) {
   const body = JSON.stringify(payload);
@@ -103,6 +107,9 @@ function cleanupExpired() {
   for (const [id, room] of rooms.entries()) {
     if (t - room.lastHeartbeatAt > ROOM_TTL_MS) rooms.delete(id);
   }
+  for (const [code, inv] of invites.entries()) {
+    if (t > inv.expiresAt || !rooms.has(inv.roomId)) invites.delete(code);
+  }
 }
 setInterval(cleanupExpired, 10_000).unref();
 
@@ -110,7 +117,9 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return send(res, 204, {});
 
   try {
-    const path = (req.url || '').split('?')[0];
+    const rawUrl = String(req.url || '');
+    const u = new URL(rawUrl, `http://${HOST}:${PORT}`);
+    const path = u.pathname;
 
     if (req.method === 'GET' && path === '/health') {
       return send(res, 200, { ok: true, service: 'noc-local-servers-registry', rooms: activeRoomList().length, ttlMs: ROOM_TTL_MS });
@@ -213,6 +222,34 @@ const server = http.createServer(async (req, res) => {
           isPrivate: room.isPrivate
         }
       });
+    }
+
+    if (req.method === 'POST' && path === '/invite/create') {
+      const body = await parseBody(req);
+      const hostId = String(body?.hostId || '').trim();
+      const roomId = String(body?.roomId || '').trim();
+      if (!hostId || !roomId) return send(res, 400, { ok: false, error: 'hostId_roomId_required' });
+      const room = rooms.get(roomId);
+      if (!room || room.hostId !== hostId) return send(res, 404, { ok: false, error: 'room_not_found' });
+
+      let code = inviteCode();
+      while (invites.has(code)) code = inviteCode();
+      invites.set(code, { code, roomId, hostId, createdAt: now(), expiresAt: now() + INVITE_TTL_MS });
+      return send(res, 200, { ok: true, code, expiresAt: now() + INVITE_TTL_MS });
+    }
+
+    if (req.method === 'GET' && path === '/invite/resolve') {
+      const code = String(u.searchParams.get('code') || '').trim().toUpperCase();
+      if (!code) return send(res, 400, { ok: false, error: 'code_required' });
+      const inv = invites.get(code);
+      if (!inv) return send(res, 404, { ok: false, error: 'invite_not_found' });
+      if (now() > inv.expiresAt) {
+        invites.delete(code);
+        return send(res, 410, { ok: false, error: 'invite_expired' });
+      }
+      const room = rooms.get(inv.roomId);
+      if (!room) return send(res, 404, { ok: false, error: 'room_not_found' });
+      return send(res, 200, { ok: true, code, room });
     }
 
     return send(res, 404, { ok: false, error: 'not_found' });

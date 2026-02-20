@@ -6,6 +6,10 @@
     const el = $('#hostStatus');
     if (el) el.textContent = t;
   }
+  function setInviteStatus(t) {
+    const el = $('#inviteStatus');
+    if (el) el.textContent = t || '';
+  }
 
   function paintHostToggle() {
     const btn = $('#btnHostToggle');
@@ -92,6 +96,30 @@
       await window.noc.localServersHostSetWanted(hostWanted);
       paintHostToggle();
       await checkBedrockStatus();
+    });
+    $('#btnShareInvite')?.addEventListener('click', async () => {
+      const r = await window.noc.localServersInviteCreate();
+      if (!r?.ok) {
+        setInviteStatus(`Не удалось создать инвайт: ${r?.error || 'unknown'}`);
+        return;
+      }
+      const code = String(r.code || '');
+      const link = `noclauncher://join/${code}`;
+      try { await navigator.clipboard.writeText(link); setInviteStatus(`Ссылка скопирована: ${link}`); }
+      catch { setInviteStatus(`Код приглашения: ${code}`); }
+      const inp = $('#inviteCode');
+      if (inp) inp.value = code;
+    });
+    $('#btnJoinByCode')?.addEventListener('click', async () => {
+      const code = String($('#inviteCode')?.value || '').trim().toUpperCase();
+      if (!code) { setInviteStatus('Введи код приглашения.'); return; }
+      const r = await window.noc.localServersInviteResolve(code);
+      if (!r?.ok || !r.room) { setInviteStatus(`Код не найден: ${r?.error || 'unknown'}`); return; }
+      const ip = String(r.room?.connect?.ip || '');
+      const port = Number(r.room?.connect?.port || 19132);
+      if (!ip) { setInviteStatus('У хоста нет публичного адреса.'); return; }
+      await window.noc.shellOpenExternal(`minecraft://?addExternalServer=${encodeURIComponent(r.room.worldName || 'Noc World')}|${ip}:${port}`);
+      setInviteStatus(`Подключение открыто: ${ip}:${port}`);
     });
     $('#btnCloseWin')?.addEventListener('click', () => window.close());
 

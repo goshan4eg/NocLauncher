@@ -554,6 +554,7 @@ try {
 } catch (_) {}
 
 let win;
+let pendingInviteCode = '';
 // Single-instance web catalog windows (Modrinth/CurseForge)
 const webWindows = new Map();
 let catalogWinModrinth = null;
@@ -952,6 +953,35 @@ function watchBedrockAndRestore() {
   }, 2000);
 }
 
+function extractInviteCodeFromArgv(argv = []) {
+  for (const a of argv) {
+    const s = String(a || '').trim();
+    const m = s.match(/^noclauncher:\/\/join\/([A-Za-z0-9_-]{4,32})/i);
+    if (m) return String(m[1] || '').toUpperCase();
+  }
+  return '';
+}
+
+async function tryJoinByInviteCode(code) {
+  const c = String(code || '').trim().toUpperCase();
+  if (!c) return { ok: false, error: 'code_required' };
+  const base = await ensureRegistryUrlAuto();
+  if (!base) return { ok: false, error: 'registry_not_set' };
+  try {
+    const r = await fetch(`${base}/invite/resolve?code=${encodeURIComponent(c)}`, { headers: { 'User-Agent': 'NocLauncher/1.0' } });
+    const j = await r.json();
+    if (!r.ok || !j?.ok) return { ok: false, error: j?.error || `http_${r.status}` };
+    const room = j.room || {};
+    const ip = String(room?.connect?.ip || '');
+    const port = Number(room?.connect?.port || 19132);
+    if (!ip) return { ok: false, error: 'no_ip' };
+    await shell.openExternal(`minecraft://?addExternalServer=${encodeURIComponent(room.worldName || 'Noc World')}|${ip}:${port}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
 process.on('uncaughtException', (e) => {
   try { sendLog('error', `uncaughtException: ${String(e?.stack || e)}`); } catch (_) {}
 });
@@ -959,7 +989,29 @@ process.on('unhandledRejection', (e) => {
   try { sendLog('error', `unhandledRejection: ${String(e?.stack || e)}`); } catch (_) {}
 });
 
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+  app.quit();
+} else {
+  app.on('second-instance', async (_event, argv) => {
+    const code = extractInviteCodeFromArgv(argv);
+    if (win && !win.isDestroyed()) { win.show(); win.focus(); }
+    if (code) {
+      const r = await tryJoinByInviteCode(code);
+      if (!r?.ok) pendingInviteCode = code;
+    }
+  });
+}
+
 app.whenReady().then(async () => {
+  try {
+    if (process.defaultApp) {
+      app.setAsDefaultProtocolClient('noclauncher', process.execPath, [path.resolve(process.argv[1] || '')]);
+    } else {
+      app.setAsDefaultProtocolClient('noclauncher');
+    }
+  } catch (_) {}
+
   // Do NOT block app startup with dependency installation.
   // Optional deps are installed lazily when a feature actually needs them.
   // (This prevents multi-minute "not clickable" freezes on first run.)
@@ -981,6 +1033,15 @@ app.whenReady().then(async () => {
   createWindow();
   ensureLocalRegistryProcess();
   ensureAutoLocalHostWatcher();
+
+  const codeFromArgs = extractInviteCodeFromArgv(process.argv || []);
+  const code = codeFromArgs || pendingInviteCode;
+  if (code) {
+    setTimeout(async () => {
+      await tryJoinByInviteCode(code);
+      pendingInviteCode = '';
+    }, 1800);
+  }
 
   // Lazy optional dependency warm-up (non-blocking)
   ensureOptionalDependency('prismarine-auth').catch(() => {});
@@ -3451,6 +3512,29 @@ ipcMain.handle('localservers:joinByCode', async (_e, payload) => {
 ipcMain.handle('localservers:hostSetWanted', async (_e, payload) => {
   manualHostWanted = !!payload?.enabled;
   return { ok: true, enabled: manualHostWanted };
+});
+
+ipcMain.handle('localservers:inviteCreate', async () => {
+  if (!autoLocalRoomId) return { ok: false, error: 'room_not_open' };
+  return await localServersApi('/invite/create', 'POST', {
+    hostId: getLocalServersHostId(),
+    roomId: autoLocalRoomId
+  });
+});
+
+ipcMain.handle('localservers:inviteResolve', async (_e, payload) => {
+  const code = String(payload?.code || '').trim().toUpperCase();
+  if (!code) return { ok: false, error: 'code_required' };
+  const base = await ensureRegistryUrlAuto();
+  if (!base) return { ok: false, error: 'registry_not_set' };
+  try {
+    const r = await fetch(`${base}/invite/resolve?code=${encodeURIComponent(code)}`, { headers: { 'User-Agent': 'NocLauncher/1.0' } });
+    const j = await r.json();
+    if (!r.ok || !j?.ok) return { ok: false, error: j?.error || `http_${r.status}` };
+    return { ok: true, room: j.room };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
 });
 
 ipcMain.handle('bedrock:hubOpen', async () => {

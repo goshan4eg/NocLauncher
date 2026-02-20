@@ -33,8 +33,14 @@
       <div class="row">
         <button class="btn acc" id="btnHostToggle">Хост: OFF</button>
         <button class="btn" id="btnOpenWorld">Открыть мир</button>
+        <button class="btn" id="btnShareInvite">Поделиться</button>
         <button class="btn" id="btnRefresh">Обновить</button>
       </div>
+      <div class="row">
+        <input id="inviteCode" placeholder="Код приглашения (например ABCD12)" style="flex:1;background:rgba(255,255,255,.08);border:1px solid var(--stroke);border-radius:10px;color:#fff;padding:6px 8px;" />
+        <button class="btn" id="btnJoinByCode">Войти по коду</button>
+      </div>
+      <div class="hint" id="inviteStatus"></div>
       <div class="list" id="servers"></div>
     </div>
   </div>
