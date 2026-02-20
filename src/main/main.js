@@ -3317,6 +3317,33 @@ function readTextSmart(filePath) {
   return '';
 }
 
+function parseMcpeOptions(filePath) {
+  const out = {};
+  try {
+    const raw = readTextSmart(filePath);
+    if (!raw) return out;
+    const lines = raw.split(/\r?\n/);
+    for (const ln of lines) {
+      const i = ln.indexOf(':');
+      if (i <= 0) continue;
+      const k = ln.slice(0, i).trim();
+      const v = ln.slice(i + 1).trim();
+      out[k] = v;
+    }
+  } catch (_) {}
+  return out;
+}
+
+function detectBedrockHostName() {
+  try {
+    const p = bedrockPaths();
+    const opts = parseMcpeOptions(p?.optionsTxt || '');
+    const mp = String(opts.mp_username || '').trim();
+    if (mp) return mp;
+  } catch (_) {}
+  return String(store.get('lastUsername') || 'Host');
+}
+
 function detectBedrockWorldMeta() {
   try {
     const p = bedrockPaths();
@@ -3427,7 +3454,7 @@ function ensureAutoLocalHostWatcher() {
         const vis = String(store.get('localServersVisibility') || 'public');
         const opened = await localServersApi('/world/open', 'POST', {
           hostId: getLocalServersHostId(),
-          hostName: String(store.get('lastUsername') || 'Host'),
+          hostName: detectBedrockHostName(),
           worldName: String(meta.worldName || 'Мой Bedrock мир'),
           gameVersion: 'bedrock',
           mode: 'survival',
@@ -3453,7 +3480,7 @@ function ensureAutoLocalHostWatcher() {
           const vis = String(store.get('localServersVisibility') || 'public');
           const reopened = await localServersApi('/world/open', 'POST', {
             hostId: getLocalServersHostId(),
-            hostName: String(store.get('lastUsername') || 'Host'),
+            hostName: detectBedrockHostName(),
             worldName: newName,
             gameVersion: 'bedrock',
             mode: 'survival',
@@ -3509,7 +3536,7 @@ ipcMain.handle('localservers:open', async (_e, payload) => {
   const vis = String(payload?.visibility || settings.localServersVisibility || 'public');
   const data = {
     hostId,
-    hostName: String(payload?.hostName || settings.lastUsername || 'Host'),
+    hostName: String(payload?.hostName || detectBedrockHostName() || settings.lastUsername || 'Host'),
     worldName: String(payload?.worldName || 'Bedrock world'),
     gameVersion: String(payload?.gameVersion || settings.lastVersion || ''),
     mode: String(payload?.mode || 'survival'),
@@ -3602,6 +3629,7 @@ ipcMain.handle('bedrock:hostStatus', async () => {
     autoHosting: !!autoLocalRoomId,
     manualHostWanted,
     worldName: String(meta.worldName || 'Мой Bedrock мир'),
+    hostName: detectBedrockHostName(),
     maxPlayers: Number(meta.maxPlayers || 10),
     currentPlayers: autoLocalRoomId ? 1 : 0
   };
