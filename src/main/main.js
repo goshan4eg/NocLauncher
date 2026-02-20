@@ -3838,14 +3838,78 @@ function resolveBedrockPackageDir() {
   }
 }
 
-function getBedrockComMojangDir() {
-  const pkgDir = resolveBedrockPackageDir();
-  if (!pkgDir) return null;
-  const com = path.join(pkgDir, 'LocalState', 'games', 'com.mojang');
+let bedrockComMojangCache = '';
+let bedrockComMojangCacheTs = 0;
+
+function discoverBedrockComMojangDir() {
+  const nowTs = Date.now();
+  if (bedrockComMojangCache && (nowTs - bedrockComMojangCacheTs) < 15000 && fs.existsSync(bedrockComMojangCache)) {
+    return bedrockComMojangCache;
+  }
+
+  const candidates = [];
+
+  // 1) Roaming Bedrock users (preferred for many installs)
   try {
-    fs.mkdirSync(com, { recursive: true });
+    const roaming = process.env.APPDATA;
+    if (roaming) {
+      const usersRoot = path.join(roaming, 'Minecraft Bedrock', 'Users');
+      if (fs.existsSync(usersRoot)) {
+        const users = fs.readdirSync(usersRoot, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name);
+        for (const u of users) {
+          if (String(u).toLowerCase() === 'shared') continue; // ignore Shared per product decision
+          const com = path.join(usersRoot, u, 'games', 'com.mojang');
+          if (!fs.existsSync(com)) continue;
+          const worlds = path.join(com, 'minecraftWorlds');
+          const worldsCount = fs.existsSync(worlds) ? fs.readdirSync(worlds, { withFileTypes: true }).filter(d => d.isDirectory()).length : 0;
+          let score = 200;
+          if (worldsCount > 0) score += 500;
+          try {
+            const st = fs.statSync(com);
+            if (nowTs - (st.mtimeMs || 0) < 7 * 86400000) score += 40;
+          } catch (_) {}
+          candidates.push({ com, score, worldsCount, source: 'roaming' });
+        }
+      }
+    }
   } catch (_) {}
-  return com;
+
+  // 2) UWP LocalState fallback
+  try {
+    const pkgDir = resolveBedrockPackageDir();
+    if (pkgDir) {
+      const com = path.join(pkgDir, 'LocalState', 'games', 'com.mojang');
+      if (fs.existsSync(com)) {
+        const worlds = path.join(com, 'minecraftWorlds');
+        const worldsCount = fs.existsSync(worlds) ? fs.readdirSync(worlds, { withFileTypes: true }).filter(d => d.isDirectory()).length : 0;
+        let score = 100;
+        if (worldsCount > 0) score += 250;
+        candidates.push({ com, score, worldsCount, source: 'uwp' });
+      }
+    }
+  } catch (_) {}
+
+  // 3) If still empty, create fallback UWP path (new users with empty storage)
+  if (!candidates.length) {
+    try {
+      const pkgDir = resolveBedrockPackageDir();
+      if (pkgDir) {
+        const com = path.join(pkgDir, 'LocalState', 'games', 'com.mojang');
+        fs.mkdirSync(com, { recursive: true });
+        candidates.push({ com, score: 10, worldsCount: 0, source: 'fallback' });
+      }
+    } catch (_) {}
+  }
+
+  if (!candidates.length) return null;
+  candidates.sort((a, b) => b.score - a.score);
+  bedrockComMojangCache = candidates[0].com;
+  bedrockComMojangCacheTs = nowTs;
+  return bedrockComMojangCache;
+}
+
+function getBedrockComMojangDir() {
+  return discoverBedrockComMojangDir();
 }
 
 function bedrockPaths() {
