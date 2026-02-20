@@ -167,7 +167,7 @@
       await checkBedrockStatus();
       await refresh();
       await refreshDiagnostics();
-    }, 4000);
+    }, 1200);
 
     await checkBedrockStatus();
     await refresh();

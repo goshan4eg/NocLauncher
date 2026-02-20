@@ -898,14 +898,12 @@ let _worldOpenHardCache = false;
 let _worldOpenHardCacheTs = 0;
 
 function isBedrockWorldOpen() {
-  // Lightweight path first (cheap): recent world activity
   const running = isBedrockRunning();
   if (!running) return false;
-  const recentWorldActivity = hasRecentBedrockWorldActivity(180000);
 
-  // Heavy net check (PowerShell/Get-NetUDPEndpoint) is throttled to avoid freezes.
+  // Faster hard check so closed worlds disappear quickly from list.
   const nowTs = Date.now();
-  if (nowTs - _worldOpenHardCacheTs > 15000) {
+  if (nowTs - _worldOpenHardCacheTs > 2500) {
     _worldOpenHardCacheTs = nowTs;
     try {
       const psHard = "$pids=(Get-Process Minecraft.Windows,MinecraftWindowsBeta -ErrorAction SilentlyContinue|Select-Object -ExpandProperty Id); if(-not $pids){'0';exit}; $eps=Get-NetUDPEndpoint -ErrorAction SilentlyContinue | Where-Object { $pids -contains $_.OwningProcess -and ($_.LocalPort -eq 19132 -or $_.LocalPort -eq 19133) }; if($eps){'1'}else{'0'}";
@@ -916,7 +914,9 @@ function isBedrockWorldOpen() {
     }
   }
 
-  return !!(recentWorldActivity || _worldOpenHardCache);
+  // Very short soft fallback for transition moments only.
+  const recentWorldActivity = hasRecentBedrockWorldActivity(6000);
+  return !!(_worldOpenHardCache || recentWorldActivity);
 }
 
 function watchBedrockAndRestore() {
@@ -3463,7 +3463,7 @@ function ensureAutoLocalHostWatcher() {
         manualHostWanted = false;
       }
     } catch (_) {}
-  }, 4000);
+  }, 1200);
 }
 
 ipcMain.handle('localservers:list', async () => {
