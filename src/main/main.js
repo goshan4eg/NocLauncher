@@ -3282,6 +3282,7 @@ let cachedBedrockRunning = false;
 let cachedWorldOpen = false;
 let worldOpenHitStreak = 0;
 let worldOpenMissStreak = 0;
+let lastWorldOpenSeenAt = 0;
 
 function ensureLocalRegistryProcess() {
   try {
@@ -3410,10 +3411,16 @@ function ensureAutoLocalHostWatcher() {
       }
 
       // Hysteresis: avoid false dropouts.
-      const worldOpenStable = worldOpenHitStreak >= 1 || (cachedWorldOpen && worldOpenMissStreak < 3);
+      const worldOpenStable = worldOpenHitStreak >= 1 || (cachedWorldOpen && worldOpenMissStreak < 4);
+      if (worldOpenStable && running) lastWorldOpenSeenAt = Date.now();
+
       cachedBedrockRunning = running;
       cachedWorldOpen = running && worldOpenStable;
-      const shouldHost = running && cachedWorldOpen;
+
+      // Grace window: don't drop host immediately on transient detector misses.
+      const worldGraceMs = 15000;
+      const withinGrace = running && (Date.now() - lastWorldOpenSeenAt < worldGraceMs);
+      const shouldHost = running && (cachedWorldOpen || withinGrace);
 
       if (shouldHost && !autoLocalRoomId) {
         const meta = detectBedrockWorldMeta();
@@ -3469,6 +3476,7 @@ function ensureAutoLocalHostWatcher() {
         autoLocalRoomId = null;
         autoLocalLastWorldName = '';
         manualHostWanted = false;
+        lastWorldOpenSeenAt = 0;
         stopAutoLocalHeartbeat();
       }
 
