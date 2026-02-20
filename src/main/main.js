@@ -3280,6 +3280,8 @@ let manualHostWanted = false;
 let localRegistryProc = null;
 let cachedBedrockRunning = false;
 let cachedWorldOpen = false;
+let worldOpenHitStreak = 0;
+let worldOpenMissStreak = 0;
 
 function ensureLocalRegistryProcess() {
   try {
@@ -3397,10 +3399,21 @@ function ensureAutoLocalHostWatcher() {
   autoLocalWatchTimer = setInterval(async () => {
     try {
       const running = isBedrockRunning();
-      const worldOpen = isBedrockWorldOpen();
+      const worldOpenRaw = isBedrockWorldOpen();
+
+      if (worldOpenRaw) {
+        worldOpenHitStreak = Math.min(worldOpenHitStreak + 1, 10);
+        worldOpenMissStreak = 0;
+      } else {
+        worldOpenMissStreak = Math.min(worldOpenMissStreak + 1, 10);
+        worldOpenHitStreak = 0;
+      }
+
+      // Hysteresis: avoid false dropouts.
+      const worldOpenStable = worldOpenHitStreak >= 1 || (cachedWorldOpen && worldOpenMissStreak < 3);
       cachedBedrockRunning = running;
-      cachedWorldOpen = worldOpen;
-      const shouldHost = running && worldOpen;
+      cachedWorldOpen = running && worldOpenStable;
+      const shouldHost = running && cachedWorldOpen;
 
       if (shouldHost && !autoLocalRoomId) {
         const meta = detectBedrockWorldMeta();
@@ -3459,7 +3472,7 @@ function ensureAutoLocalHostWatcher() {
         stopAutoLocalHeartbeat();
       }
 
-      if ((!running || !worldOpen) && manualHostWanted) {
+      if ((!running || !cachedWorldOpen) && manualHostWanted) {
         manualHostWanted = false;
       }
     } catch (_) {}
