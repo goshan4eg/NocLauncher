@@ -1,35 +1,41 @@
 (() => {
   const $ = (s) => document.querySelector(s);
 
-  function setHostStatus(t) { const el = $('#hostStatus'); if (el) el.textContent = t; }
+  function setHostStatus(t) {
+    const el = $('#hostStatus');
+    if (el) el.textContent = t;
+  }
 
   async function refresh() {
     const root = $('#servers');
     if (!root) return;
-    root.innerHTML = '<div class="meta">Загрузка...</div>';
+
     const r = await window.noc.localServersList();
     if (!r?.ok) {
-      root.innerHTML = `<div class="meta">Реестр не найден (${r?.error || 'unknown'}). Подними registry:start на сервере.</div>`;
+      root.innerHTML = `<div class="meta">Реестр недоступен (${r?.error || 'unknown'}). Проверь, что registry-сервер запущен.</div>`;
       return;
     }
+
     const list = Array.isArray(r.servers) ? r.servers : [];
     if (!list.length) {
-      root.innerHTML = '<div class="meta">Пока нет активных миров.</div>';
+      root.innerHTML = '<div class="meta">Активных миров пока нет.</div>';
       return;
     }
+
     root.innerHTML = list.map((s, i) => {
-      const name = String(s.worldName || `Server #${i+1}`);
+      const name = String(s.worldName || `Server #${i + 1}`);
       const host = String(s.hostName || 'unknown');
       const ip = String(s.connect?.ip || '');
       const port = Number(s.connect?.port || 19132);
       const ver = String(s.gameVersion || 'bedrock');
+      const maxPlayers = Number(s.maxPlayers || 10);
       const disabled = !ip;
       return `<div class="item">
         <div>
           <div class="name">${name}</div>
-          <div class="meta">Host: ${host} • ${ip ? `${ip}:${port}` : 'адрес скрыт'} • ${ver}</div>
+          <div class="meta">Host: ${host} • ${ip ? `${ip}:${port}` : 'адрес скрыт'} • v${ver} • max ${maxPlayers}</div>
         </div>
-        <button class="btn ${disabled ? '' : 'acc'}" data-ip="${ip}" data-port="${port}" ${disabled ? 'disabled' : ''}>Войти</button>
+        <button class="btn ${disabled ? '' : 'acc'}" data-ip="${ip}" data-port="${port}" ${disabled ? 'disabled' : ''}>Присоединиться</button>
       </div>`;
     }).join('');
 
@@ -46,20 +52,26 @@
   async function checkBedrockStatus() {
     const s = await window.noc.bedrockHostStatus();
     if (!s?.ok) return;
+
+    if (!s.registryUrl) {
+      setHostStatus('Не найден реестр. Подними локальный/внешний registry и он подцепится автоматически.');
+      return;
+    }
+
     if (!s.bedrockRunning) {
-      setHostStatus('Bedrock не запущен. Хост включится автоматически, когда зайдёшь в мир.');
+      setHostStatus(`Реестр: ${s.registryUrl}. Bedrock не запущен. Нажми «Открыть мир».`);
     } else if (!s.worldOpen) {
-      setHostStatus('Bedrock запущен. Зайди в обычный мир — хост включится автоматически.');
+      setHostStatus(`Реестр: ${s.registryUrl}. Зайди в мир и включи «Открыть для сети».`);
     } else if (s.autoHosting) {
-      setHostStatus('Мир обнаружен. Авто-хост активен ✅');
+      setHostStatus(`Мир «${s.worldName || 'Bedrock'}» опубликован автоматически ✅ (до ${s.maxPlayers || 10} игроков)`);
     } else {
-      setHostStatus('Мир обнаружен. Запускаю авто-хост...');
+      setHostStatus(`Мир найден. Публикую в реестре...`);
     }
   }
 
   async function init() {
     $('#btnRefresh')?.addEventListener('click', refresh);
-    $('#btnOpenMinecraft')?.addEventListener('click', async () => {
+    $('#btnOpenWorld')?.addEventListener('click', async () => {
       await window.noc.bedrockLaunch();
       setTimeout(checkBedrockStatus, 1200);
     });
@@ -68,7 +80,7 @@
     setInterval(async () => {
       await checkBedrockStatus();
       await refresh();
-    }, 5000);
+    }, 1000);
 
     await checkBedrockStatus();
     await refresh();
