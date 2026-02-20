@@ -5,19 +5,21 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>NocLauncher — Локальные сервера</title>
   <style>
-    :root{--txt:#fff;--muted:rgba(255,255,255,.75);--stroke:rgba(255,255,255,.12);--acc:#6dff9a}
+    :root{--txt:#fff;--muted:rgba(255,255,255,.78);--stroke:rgba(255,153,51,.45);--acc:#ff8f2a;--bg1:rgba(56,56,56,.88);--bg2:rgba(74,74,74,.88)}
     *{box-sizing:border-box}
     body{margin:0;color:var(--txt);font-family:Segoe UI,Inter,Arial;background:transparent}
     .wrap{padding:8px}
-    .shell{background:linear-gradient(180deg,rgba(16,12,30,.20),rgba(10,8,20,.20));border:1px solid var(--stroke);border-radius:14px;padding:10px}
+    .shell{background:linear-gradient(180deg,var(--bg2),var(--bg1));border:1px solid var(--stroke);border-radius:14px;padding:10px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    .curtain{display:block;background:linear-gradient(90deg,rgba(255,122,20,.95),rgba(255,163,77,.95));color:#2d1300;border-radius:8px;padding:4px 8px;font-size:11px;font-weight:900;letter-spacing:.2px;margin-bottom:7px}
+    .curtain.bottom{margin-top:6px;margin-bottom:0}
     .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
     .title{font-weight:900;font-size:16px}
-    .btn{border:1px solid var(--stroke);background:rgba(255,255,255,.07);color:#fff;border-radius:10px;padding:6px 9px;font-weight:800;cursor:pointer}
-    .btn.acc{background:linear-gradient(135deg,#66ef96,#4ada7d);color:#082313;border:0}
+    .btn{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;border-radius:10px;padding:6px 9px;font-weight:800;cursor:pointer}
+    .btn.acc{background:linear-gradient(135deg,#ff7f1f,#ff9d46);color:#2f1600;border:0}
     .hint{font-size:12px;color:var(--muted);margin-bottom:7px}
     .row{display:flex;gap:7px;margin-bottom:8px}
     .list{max-height:300px;overflow:auto}
-    .item{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;background:rgba(255,255,255,.04);border:1px solid var(--stroke);border-radius:10px;padding:8px;margin-bottom:6px}
+    .item{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;background:rgba(255,255,255,.05);border:1px solid rgba(255,153,51,.32);border-radius:10px;padding:8px;margin-bottom:6px}
     .name{font-weight:800;font-size:14px}
     .meta{font-size:12px;color:var(--muted)}
   </style>
@@ -25,8 +27,9 @@
 <body>
   <div class="wrap">
     <div class="shell">
+      <div class="curtain">MULTIPLAYER HUB • NOC ARCADE STYLE</div>
       <div class="top">
-        <div class="title">Noc • Локальные сервера</div>
+        <div class="title">Noc • Мультиплеер Bedrock</div>
         <button class="btn" id="btnCloseWin">✕</button>
       </div>
       <div class="hint" id="hostStatus">Проверка Bedrock...</div>
@@ -48,6 +51,7 @@
       <div class="hint" id="inviteStatus"></div>
       <div class="hint" id="diagStatus"></div>
       <div class="list" id="servers"></div>
+      <div class="curtain bottom">HOST SWITCH • ORANGE STATUS • LIVE FEED</div>
     </div>
   </div>
   <script src="./bedrock-hub.js"></script>
