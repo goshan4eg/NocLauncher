@@ -98,7 +98,7 @@
     setInterval(async () => {
       await checkBedrockStatus();
       await refresh();
-    }, 2500);
+    }, 4000);
 
     await checkBedrockStatus();
     await refresh();

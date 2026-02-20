@@ -891,33 +891,29 @@ function hasRecentBedrockWorldActivity(maxAgeMs = 180000) {
   }
 }
 
-function isBedrockWorldOpen() {
-  // HARD signal: default Bedrock host ports are opened by Minecraft process.
-  try {
-    const psHard = "$pids=(Get-Process Minecraft.Windows,MinecraftWindowsBeta -ErrorAction SilentlyContinue|Select-Object -ExpandProperty Id); if(-not $pids){'0';exit}; $eps=Get-NetUDPEndpoint -ErrorAction SilentlyContinue | Where-Object { $pids -contains $_.OwningProcess -and ($_.LocalPort -eq 19132 -or $_.LocalPort -eq 19133) }; if($eps){'1'}else{'0'}";
-    const outHard = execFileSync('powershell', ['-NoProfile', '-Command', psHard], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-    if (outHard === '1') return true;
-  } catch (_) {}
+let _worldOpenHardCache = false;
+let _worldOpenHardCacheTs = 0;
 
-  // SOFT signals (to reduce false negatives):
-  // 1) Minecraft owns any UDP endpoint right now
-  // 2) world files had recent activity
-  let udpOwnedByMinecraft = false;
-  try {
-    const psSoft = "$pids=(Get-Process Minecraft.Windows,MinecraftWindowsBeta -ErrorAction SilentlyContinue|Select-Object -ExpandProperty Id); if(-not $pids){'0';exit}; $eps=Get-NetUDPEndpoint -ErrorAction SilentlyContinue | Where-Object { $pids -contains $_.OwningProcess }; if($eps){'1'}else{'0'}";
-    const outSoft = execFileSync('powershell', ['-NoProfile', '-Command', psSoft], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
-    udpOwnedByMinecraft = outSoft === '1';
-  } catch (_) {
+function isBedrockWorldOpen() {
+  // Lightweight path first (cheap): recent world activity
+  const running = isBedrockRunning();
+  if (!running) return false;
+  const recentWorldActivity = hasRecentBedrockWorldActivity(180000);
+
+  // Heavy net check (PowerShell/Get-NetUDPEndpoint) is throttled to avoid freezes.
+  const nowTs = Date.now();
+  if (nowTs - _worldOpenHardCacheTs > 15000) {
+    _worldOpenHardCacheTs = nowTs;
     try {
-      const out = execFileSync('netstat', ['-ano', '-p', 'udp'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString();
-      udpOwnedByMinecraft = /UDP\s+[^\n]+/i.test(out);
-    } catch (__){
-      udpOwnedByMinecraft = false;
+      const psHard = "$pids=(Get-Process Minecraft.Windows,MinecraftWindowsBeta -ErrorAction SilentlyContinue|Select-Object -ExpandProperty Id); if(-not $pids){'0';exit}; $eps=Get-NetUDPEndpoint -ErrorAction SilentlyContinue | Where-Object { $pids -contains $_.OwningProcess -and ($_.LocalPort -eq 19132 -or $_.LocalPort -eq 19133) }; if($eps){'1'}else{'0'}";
+      const outHard = execFileSync('powershell', ['-NoProfile', '-Command', psHard], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+      _worldOpenHardCache = (outHard === '1');
+    } catch (_) {
+      _worldOpenHardCache = false;
     }
   }
 
-  const recentWorldActivity = hasRecentBedrockWorldActivity(180000);
-  return !!(isBedrockRunning() && (udpOwnedByMinecraft || recentWorldActivity));
+  return !!(recentWorldActivity || _worldOpenHardCache);
 }
 
 function watchBedrockAndRestore() {
@@ -3310,7 +3306,7 @@ function startAutoLocalHeartbeat() {
         currentPlayers
       });
     } catch (_) {}
-  }, 2000);
+  }, 3000);
 }
 
 function ensureAutoLocalHostWatcher() {
@@ -3377,7 +3373,7 @@ function ensureAutoLocalHostWatcher() {
         stopAutoLocalHeartbeat();
       }
     } catch (_) {}
-  }, 2500);
+  }, 4000);
 }
 
 ipcMain.handle('localservers:list', async () => {
