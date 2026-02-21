@@ -700,6 +700,7 @@ const state = {
   ],
   bedrockCheckToken: 0,
   bedrockOptions: [],
+  bedrockUsefulOnly: false,
   profiles: [],
   loaderInstalled: false,
   resolvedLoaderProfile: null,
@@ -2562,6 +2563,12 @@ function wireUI() {
   $('#btnBrPresetHigh')?.addEventListener('click', async () => applyBedrockPreset('high'));
   $('#btnBrPresetUltra')?.addEventListener('click', async () => applyBedrockPreset('ultra'));
   $('#brOptSearch')?.addEventListener('input', () => renderBedrockOptionsList());
+  $('#btnBrUsefulOnly')?.addEventListener('click', () => {
+    state.bedrockUsefulOnly = !state.bedrockUsefulOnly;
+    const b = $('#btnBrUsefulOnly');
+    if (b) b.textContent = `Только полезные: ${state.bedrockUsefulOnly ? 'ВКЛ' : 'ВЫКЛ'}`;
+    renderBedrockOptionsList();
+  });
 
   // tab switching
   $('#bedrockContentTabs')?.addEventListener('click', (e) => {
@@ -3231,6 +3238,8 @@ async function renderBedrockOptions() {
   const hint = $('#bedrockOptionsHint');
   const list = $('#brOptionsList');
   if (list) list.innerHTML = '';
+  const usefulBtn = $('#btnBrUsefulOnly');
+  if (usefulBtn) usefulBtn.textContent = `Только полезные: ${state.bedrockUsefulOnly ? 'ВКЛ' : 'ВЫКЛ'}`;
   try {
     const r = await window.noc?.bedrockOptionsRead?.();
     if (!r?.ok) {
@@ -3281,12 +3290,22 @@ const BEDROCK_OPTION_DESCRIPTIONS = {
   'game_difficulty_new': 'Уровень сложности мира.'
 };
 
+function isUsefulBedrockOptionKey(key) {
+  const k = String(key || '').toLowerCase();
+  if (BEDROCK_OPTION_DESCRIPTIONS[k]) return true;
+  return /^(gfx_|audio_|ctrl_|mp_|game_language|game_difficulty|show_advanced|crossplatform_|screen_animations|dvce_filestoragelocation)/.test(k);
+}
+
 function renderBedrockOptionsList() {
   const list = $('#brOptionsList');
   if (!list) return;
   list.innerHTML = '';
   const q = String($('#brOptSearch')?.value || '').trim().toLowerCase();
-  const items = (state.bedrockOptions || []).filter(it => !q || String(it.key || '').toLowerCase().includes(q));
+  const items = (state.bedrockOptions || []).filter(it => {
+    const k = String(it.key || '').toLowerCase();
+    if (state.bedrockUsefulOnly && !isUsefulBedrockOptionKey(k)) return false;
+    return !q || k.includes(q);
+  });
   if (!items.length) {
     list.innerHTML = '<div class="mcSub">Ничего не найдено.</div>';
     return;
@@ -3294,7 +3313,7 @@ function renderBedrockOptionsList() {
   for (const it of items.slice(0, 220)) {
     const row = document.createElement('div');
     row.className = 'item mcItem';
-    const baseDesc = BEDROCK_OPTION_DESCRIPTIONS[it.key] || it.comment || 'Параметр Bedrock options.txt';
+    const baseDesc = BEDROCK_OPTION_DESCRIPTIONS[it.key] || it.comment || 'Системный параметр Bedrock. Лучше не менять без необходимости.';
     const rawVal = String(it.value ?? '').trim().toLowerCase();
     const isBool = ['0', '1', 'true', 'false'].includes(rawVal);
     const desc = isBool

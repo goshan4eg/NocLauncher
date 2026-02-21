@@ -250,7 +250,10 @@
 
                   <div class="formRow" style="margin-top:10px;">
                     <div class="lbl">Все параметры</div>
-                    <input class="input" id="brOptSearch" placeholder="Поиск по ключу (например gfx_, render, ui_)" />
+                    <div class="hrow" style="gap:8px; width:100%;">
+                      <input class="input" id="brOptSearch" placeholder="Поиск по ключу (например gfx_, render, ui_)" />
+                      <button class="btn mini ghost" id="btnBrUsefulOnly" type="button">Только полезные: ВЫКЛ</button>
+                    </div>
                   </div>
                   <div class="list" id="brOptionsList"></div>
                   <div class="help">Совет: меняй значения аккуратно. Если не уверен — используй пресеты.</div>
