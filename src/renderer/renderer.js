@@ -2543,10 +2543,12 @@ function wireUI() {
   $('#btnBedrockWorlds')?.addEventListener('click', () => openBedrockContent('worlds'));
   $('#btnBedrockSkins')?.addEventListener('click', () => openBedrockContent('skins'));
   // Bedrock settings (graphics/options)
-  $('#btnBedrockGfx')?.addEventListener('click', async () => {
+  const openBedrockSettings = async () => {
     await renderBedrockOptions();
     openModal('modalBedrockSettings');
-  });
+  };
+  $('#btnBedrockGfx')?.addEventListener('click', openBedrockSettings);
+  $('#btnBedrockSettings')?.addEventListener('click', openBedrockSettings);
   $('#btnCloseBedrockContent')?.addEventListener('click', () => closeModal('modalBedrockContent'));
 
   $('#btnCloseBedrockSettings')?.addEventListener('click', () => closeModal('modalBedrockSettings'));
