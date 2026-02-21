@@ -3290,6 +3290,40 @@ const BEDROCK_OPTION_DESCRIPTIONS = {
   'game_difficulty_new': 'Уровень сложности мира.'
 };
 
+function humanizeBedrockOptionKey(key) {
+  const k = String(key || '').toLowerCase();
+  const dict = {
+    gfx: 'Графика', audio: 'Звук', ctrl: 'Управление', mp: 'Сеть', game: 'Игра', ui: 'Интерфейс',
+    viewdistance: 'дальность прорисовки', particleviewdistance: 'дальность частиц', particles: 'частицы',
+    max: 'лимит/макс', framerate: 'частота кадров', vsync: 'вертикальная синхронизация',
+    field: 'поле', of: ' ', view: 'обзора', fov: 'FOV', smooth: 'сглаживание', lighting: 'освещение',
+    transparent: 'прозрачность', leaves: 'листвы', clouds: 'облака', bloom: 'свечение',
+    sensitivity: 'чувствительность', mouse: 'мышь', touch: 'сенсор', gamepad: 'геймпад',
+    invert: 'инверсия', autojump: 'автопрыжок', language: 'язык', difficulty: 'сложность',
+    server: 'сервер', visible: 'видимость', xboxlive: 'Xbox Live', storage: 'хранилище', location: 'расположение'
+  };
+  return k.split('_').map(p => dict[p] || p).join(' ').replace(/\s+/g, ' ').trim();
+}
+
+function describeBedrockOption(key, fallback, isBool) {
+  const k = String(key || '').toLowerCase();
+  if (BEDROCK_OPTION_DESCRIPTIONS[k]) return BEDROCK_OPTION_DESCRIPTIONS[k] + (isBool ? ' | ВКЛ = активировано, ВЫКЛ = отключено.' : '');
+
+  let scope = 'Системный параметр Bedrock';
+  if (k.startsWith('gfx_')) scope = 'Параметр графики';
+  else if (k.startsWith('audio_')) scope = 'Параметр звука';
+  else if (k.startsWith('ctrl_')) scope = 'Параметр управления';
+  else if (k.startsWith('mp_')) scope = 'Сетевой параметр';
+  else if (k.startsWith('game_')) scope = 'Игровой параметр';
+  else if (k.startsWith('ui_')) scope = 'Параметр интерфейса';
+
+  const human = humanizeBedrockOptionKey(k);
+  const base = `${scope}: ${human || k}. ${fallback ? '' : ''}`.trim();
+  return isBool
+    ? `${base} ВКЛ — функция работает, ВЫКЛ — функция отключена.`
+    : `${base} Изменяй аккуратно, это влияет на поведение игры.`;
+}
+
 function isUsefulBedrockOptionKey(key) {
   const k = String(key || '').toLowerCase();
   if (BEDROCK_OPTION_DESCRIPTIONS[k]) return true;
@@ -3313,12 +3347,9 @@ function renderBedrockOptionsList() {
   for (const it of items.slice(0, 220)) {
     const row = document.createElement('div');
     row.className = 'item mcItem';
-    const baseDesc = BEDROCK_OPTION_DESCRIPTIONS[it.key] || it.comment || 'Системный параметр Bedrock. Лучше не менять без необходимости.';
     const rawVal = String(it.value ?? '').trim().toLowerCase();
     const isBool = ['0', '1', 'true', 'false'].includes(rawVal);
-    const desc = isBool
-      ? `${baseDesc} | ВКЛ = активировано, ВЫКЛ = отключено.`
-      : baseDesc;
+    const desc = describeBedrockOption(it.key, it.comment, isBool);
 
     if (isBool) {
       const isOn = (rawVal === '1' || rawVal === 'true');
