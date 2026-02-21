@@ -4760,9 +4760,12 @@ ipcMain.handle('bedrock:worldImport', async () => {
   ensureDir(p.worlds);
   const win = BrowserWindow.getAllWindows()[0];
   const { canceled, filePaths } = await dialog.showOpenDialog(win, {
-    title: 'Импорт мира (zip)',
+    title: 'Импорт мира (Bedrock) — .mcworld/.zip',
     properties: ['openFile'],
-    filters: [{ name: 'ZIP', extensions: ['zip'] }, { name: 'All files', extensions: ['*'] }]
+    filters: [
+      { name: 'Bedrock worlds', extensions: ['mcworld', 'zip'] },
+      { name: 'All files', extensions: ['*'] }
+    ]
   });
   if (canceled || !filePaths?.[0]) return { ok: false, error: 'cancel' };
   const src = filePaths[0];
@@ -4780,7 +4783,7 @@ ipcMain.handle('bedrock:worldImport', async () => {
       return { ok: true };
     }
     // Otherwise extract into new folder
-    const baseName = path.basename(src).replace(/\.zip$/i, '');
+    const baseName = path.basename(src).replace(/\.(zip|mcworld)$/i, '');
     const outFolder = path.join(p.worlds, baseName);
     ensureDir(outFolder);
     zip.extractAllTo(outFolder, true);

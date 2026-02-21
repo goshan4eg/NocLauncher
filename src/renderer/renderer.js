@@ -2543,6 +2543,7 @@ function wireUI() {
   $('#btnBedrockPacks')?.addEventListener('click', () => openBedrockContent('packs'));
   $('#btnBedrockWorlds')?.addEventListener('click', () => openBedrockContent('worlds'));
   $('#btnBedrockSkins')?.addEventListener('click', () => openBedrockContent('skins'));
+  $('#btnBedrockLibrary')?.addEventListener('click', () => openBedrockContent('packs'));
   // Bedrock settings (graphics/options)
   const openBedrockSettings = async () => {
     await renderBedrockOptions();
