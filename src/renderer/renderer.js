@@ -3246,6 +3246,29 @@ async function renderBedrockOptions() {
   }
 }
 
+const BEDROCK_OPTION_DESCRIPTIONS = {
+  'mp_server_visible': 'Разрешает/запрещает видимость твоего мира по сети.',
+  'mp_xboxlive_visible': 'Видимость мира для Xbox-друзей.',
+  'dvce_filestoragelocation': 'Где Bedrock хранит файлы мира/ресурсов (internal/external).',
+  'gfx_viewdistance': 'Дальность прорисовки мира. Больше = красивее, но тяжелее для FPS.',
+  'gfx_max_framerate': 'Лимит FPS (0 = без лимита).',
+  'gfx_vsync': 'Вертикальная синхронизация. Уменьшает разрывы кадра, может добавить задержку.',
+  'gfx_field_of_view': 'Угол обзора (FOV).',
+  'gfx_particles': 'Количество частиц (эффекты).',
+  'gfx_bloom': 'Эффект свечения (Bloom).',
+  'gfx_fancygraphics': 'Расширенная графика. Красивее, но тяжелее.',
+  'audio_main': 'Общая громкость.',
+  'audio_music': 'Громкость музыки.',
+  'audio_sound': 'Громкость игровых звуков.',
+  'ctrl_sensitivity2_mouse': 'Чувствительность мыши.',
+  'ctrl_sensitivity2_touch': 'Чувствительность касаний (тач).',
+  'ctrl_sensitivity2_gamepad': 'Чувствительность геймпада.',
+  'ctrl_invertmouse_mouse': 'Инверсия оси Y для мыши.',
+  'show_advanced_video_settings': 'Показывать расширенные настройки графики.',
+  'game_language': 'Язык игры.',
+  'game_difficulty_new': 'Уровень сложности мира.'
+};
+
 function renderBedrockOptionsList() {
   const list = $('#brOptionsList');
   if (!list) return;
@@ -3259,10 +3282,11 @@ function renderBedrockOptionsList() {
   for (const it of items.slice(0, 220)) {
     const row = document.createElement('div');
     row.className = 'item mcItem';
+    const desc = BEDROCK_OPTION_DESCRIPTIONS[it.key] || it.comment || 'Параметр Bedrock options.txt';
     row.innerHTML = `
       <div class="mcItemLeft">
         <div class="mcVer mono" style="font-size:14px;">${escapeHtml(it.key)}</div>
-        <div class="mcSub">${escapeHtml(it.comment || '')}</div>
+        <div class="mcSub">${escapeHtml(desc)}</div>
       </div>
       <div class="mcItemRight" style="gap:8px;">
         <input class="inputMini mono" style="width:180px;" value="${escapeHtml(String(it.value ?? ''))}" data-br-opt="${escapeHtml(it.key)}" />
