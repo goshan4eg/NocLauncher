@@ -569,7 +569,7 @@ textarea.ta{
 .heroBg{
   position: absolute;
   inset: 0;
-  background-image: image-set(url("img/hero-ui.png") 1x, url("img/hero.jpg") 2x);
+  background-image: url("img/hero-n-bright.svg");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
