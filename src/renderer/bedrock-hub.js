@@ -5,15 +5,46 @@
   let transport = 'auto';
   let streamerMode = false;
   let collapsed = false;
+  let miniMenuOpen = false;
+  const LIVE_FPS_KEYS = ['gfx_showfps', 'show_fps', 'dev_show_fps', 'dev_showfps', 'fps_counter'];
 
   function paintCollapsed() {
     document.body.classList.toggle('collapsed', collapsed);
+    document.body.classList.toggle('menu-open', collapsed && miniMenuOpen);
     const c = $('#btnCollapse');
     if (c) c.textContent = collapsed ? 'Показать' : 'Скрыть';
   }
 
+  function setMiniMenuOpen(next) {
+    miniMenuOpen = !!next;
+    paintCollapsed();
+  }
+
+  async function readLiveFpsEnabled() {
+    try {
+      const r = await window.noc?.bedrockOptionsRead?.();
+      const items = Array.isArray(r?.items) ? r.items : [];
+      const map = new Map(items.map(it => [String(it.key || '').toLowerCase(), String(it.value ?? '').trim().toLowerCase()]));
+      for (const k of LIVE_FPS_KEYS) {
+        if (!map.has(k)) continue;
+        const v = map.get(k);
+        return (v === '1' || v === 'true');
+      }
+    } catch (_) {}
+    return false;
+  }
+
+  async function paintMiniFpsToggle() {
+    const b = $('#btnMiniFps');
+    if (!b) return;
+    const on = await readLiveFpsEnabled();
+    b.textContent = on ? 'ВКЛ' : 'ВЫКЛ';
+    b.classList.toggle('acc', on);
+  }
+
   async function setCollapsed(next) {
     collapsed = !!next;
+    if (!collapsed) miniMenuOpen = false;
     try { localStorage.setItem('noc.bedrockHub.collapsed', collapsed ? '1' : '0'); } catch (_) {}
     paintCollapsed();
     try { await window.noc.bedrockHubSetCollapsed(collapsed); } catch (_) {}
@@ -251,14 +282,29 @@
     });
 
     $('#btnCollapse')?.addEventListener('click', () => setCollapsed(!collapsed));
-    $('#btnExpand')?.addEventListener('click', () => setCollapsed(false));
+    $('#btnExpand')?.addEventListener('click', () => { setMiniMenuOpen(false); setCollapsed(false); });
     $('#btnMiniSettings')?.addEventListener('click', async () => {
-      const r = await window.noc?.bedrockOpenSettings?.();
-      if (r?.ok) setInviteStatus('Открываю настройки Bedrock…');
-      else setInviteStatus(`Не удалось открыть настройки: ${r?.error || 'unknown'}`);
+      setMiniMenuOpen(!miniMenuOpen);
+      if (miniMenuOpen) await paintMiniFpsToggle();
+    });
+    $('#btnMiniFps')?.addEventListener('click', async () => {
+      const on = await readLiveFpsEnabled();
+      const next = on ? '0' : '1';
+      for (const k of LIVE_FPS_KEYS) {
+        await window.noc?.bedrockOptionsSet?.(k, next);
+      }
+      await paintMiniFpsToggle();
+      setInviteStatus(`FPS-счётчик: ${next === '1' ? 'включён' : 'выключен'}`);
     });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F8') setCollapsed(!collapsed);
+      if (e.key === 'Escape' && miniMenuOpen) setMiniMenuOpen(false);
+    });
+    document.addEventListener('click', (e) => {
+      if (!miniMenuOpen) return;
+      const t = e.target;
+      if (t?.closest?.('#miniMenu') || t?.closest?.('#btnMiniSettings')) return;
+      setMiniMenuOpen(false);
     });
 
     $('#btnCloseWin')?.addEventListener('click', () => window.close());

@@ -36,9 +36,15 @@
     .miniDock{display:none;position:fixed;top:8px;right:8px;z-index:9999;gap:8px;align-items:center}
     .miniBtn{border:1px solid rgba(255,255,255,.18);background:rgba(24,30,45,.88);color:#fff;border-radius:12px;padding:8px 12px;font-weight:900;cursor:pointer}
     #btnMiniSettings{padding:8px 10px;min-width:40px}
+    .miniMenu{display:none;position:fixed;top:56px;right:8px;z-index:10000;background:rgba(24,30,45,.96);border:1px solid rgba(255,255,255,.18);border-radius:12px;padding:8px;min-width:220px;box-shadow:0 10px 26px rgba(0,0,0,.35)}
+    .miniMenuRow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .miniMenuTitle{font-size:12px;color:var(--muted);font-weight:800}
+    .miniToggle{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.08);color:#fff;border-radius:10px;padding:6px 10px;font-weight:900;cursor:pointer;min-width:74px}
+    .miniToggle.acc{background:var(--green);color:#133b0b;border:0}
     body.collapsed .wrap{padding:0}
     body.collapsed .shell{display:none}
     body.collapsed .miniDock{display:flex}
+    body.collapsed.menu-open .miniMenu{display:block}
   </style>
 </head>
 <body>
@@ -83,7 +89,13 @@
   </div>
   <div class="miniDock" id="miniDock">
     <button class="miniBtn" id="btnExpand">Открыть панель</button>
-    <button class="miniBtn" id="btnMiniSettings" title="Настройки Bedrock" aria-label="Настройки Bedrock">⚙</button>
+    <button class="miniBtn" id="btnMiniSettings" title="Быстрые настройки" aria-label="Быстрые настройки">⚙</button>
+  </div>
+  <div class="miniMenu" id="miniMenu" aria-label="Быстрые настройки Bedrock">
+    <div class="miniMenuRow">
+      <div class="miniMenuTitle">Живой счётчик FPS</div>
+      <button class="miniToggle" id="btnMiniFps">ВЫКЛ</button>
+    </div>
   </div>
   <script src="./bedrock-hub.js"></script>
 </body>
