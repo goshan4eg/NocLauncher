@@ -2564,34 +2564,66 @@ function wireUI() {
       try { await window.noc?.shellOpenExternal?.(url); } catch (_) {}
     }
   });
+  const msFixLog = (text) => {
+    const box = $('#bedrockMsFixLog');
+    if (!box) return;
+    const row = document.createElement('div');
+    row.className = 'mcSub';
+    row.textContent = text;
+    box.prepend(row);
+  };
+
   $('#btnBedrockMsFix')?.addEventListener('click', async () => {
-    setStatus('MS Fix: проверяю Microsoft/Xbox компоненты...');
+    openModal('modalBedrockMsFix');
+    msFixLog('Открыл мастер MS Fix. Нажми "Диагностика".');
+  });
+  $('#btnCloseBedrockMsFix')?.addEventListener('click', () => closeModal('modalBedrockMsFix'));
+
+  $('#btnMsFixDiag')?.addEventListener('click', async () => {
+    setStatus('MS Fix: диагностика...');
     const d = await window.noc?.bedrockMicrosoftDiag?.();
     if (!d?.ok) {
-      setStatus(`MS Fix: диагностика не удалась — ${d?.error || 'unknown'}`);
+      msFixLog(`Диагностика: ошибка — ${d?.error || 'unknown'}`);
+      setStatus('MS Fix: диагностика не удалась');
       return;
     }
-
     const missing = [];
     if (!d.minecraftInstalled) missing.push('Minecraft for Windows');
     if (!d.gamingServicesInstalled) missing.push('Gaming Services');
     if (!d.xboxIdentityInstalled) missing.push('Xbox Identity Provider');
     if (!d.storeInstalled) missing.push('Microsoft Store');
-    if (d.storeOutdated) missing.push(`Store outdated (${d.storeVersion || 'unknown'} < ${d.minStoreVersion || 'target'})`);
+    if (d.storeOutdated) missing.push(`Store outdated ${d.storeVersion || '?'} < ${d.minStoreVersion || '?'}`);
     if (!d.storeServiceOk) missing.push('ClipSVC');
-    if (!d.wuServiceOk) missing.push('Windows Update (wuauserv)');
+    if (!d.wuServiceOk) missing.push('wuauserv');
     if (!d.bitsServiceOk) missing.push('BITS');
+    msFixLog(missing.length ? `Найдены проблемы: ${missing.join(', ')}` : 'Критичных проблем не найдено.');
+    setStatus('MS Fix: диагностика завершена');
+  });
 
-    setStatus(missing.length
-      ? `MS Fix: найдены проблемы (${missing.join(', ')}). Применяю быстрый фикс...`
-      : 'MS Fix: критичных проблем не найдено, запускаю мягкий фикс кэша/служб...');
-
-    const f = await window.noc?.bedrockMicrosoftQuickFix?.();
-    if (f?.ok) {
-      setStatus('MS Fix: готово. Перезапусти ПК и попробуй запустить Bedrock снова.');
-    } else {
-      setStatus(`MS Fix: частично выполнено — ${f?.error || 'unknown'}`);
+  $('#btnMsFixAuto')?.addEventListener('click', async () => {
+    setStatus('MS Fix: выполняю авто-фикс...');
+    const r = await window.noc?.bedrockMicrosoftQuickFix?.();
+    if (!r?.ok) {
+      msFixLog(`Авто-фикс: ошибка — ${r?.error || 'unknown'}`);
+      setStatus('MS Fix: авто-фикс не удался');
+      return;
     }
+    for (const s of (r.steps || [])) {
+      msFixLog(`${s.ok ? '✅' : '⚠️'} ${s.name}${s.error ? ` — ${s.error}` : ''}`);
+    }
+    msFixLog('Авто-фикс завершён. Далее открой Store обновления и перезагрузи ПК.');
+    setStatus('MS Fix: авто-фикс завершён');
+  });
+
+  $('#btnMsFixStoreUpdates')?.addEventListener('click', async () => { await window.noc?.shellOpenExternal?.('ms-windows-store://downloadsandupdates'); msFixLog('Открыт Store: Обновления.'); });
+  $('#btnMsFixXboxApp')?.addEventListener('click', async () => { await window.noc?.shellOpenExternal?.('ms-windows-store://pdp/?productid=9MV0B5HZVK9Z'); msFixLog('Открыта страница Xbox app в Store.'); });
+  $('#btnMsFixGamingServices')?.addEventListener('click', async () => { await window.noc?.shellOpenExternal?.('ms-windows-store://pdp/?productid=9MWPM2CQNLHN'); msFixLog('Открыта страница Gaming Services в Store.'); });
+  $('#btnMsFixMinecraftStore')?.addEventListener('click', async () => { await window.noc?.shellOpenExternal?.('ms-windows-store://pdp/?PFN=Microsoft.MinecraftUWP_8wekyb3d8bbwe'); msFixLog('Открыта страница Minecraft for Windows в Store.'); });
+  $('#btnMsFixXboxNetworking')?.addEventListener('click', async () => { await window.noc?.shellOpenExternal?.('ms-settings:gaming-xboxnetworking'); msFixLog('Открыты настройки Xbox Networking (NAT/Teredo).'); });
+  $('#btnMsFixReboot')?.addEventListener('click', async () => {
+    msFixLog('Запрос перезагрузки ПК через 5 секунд...');
+    const r = await window.noc?.bedrockRebootNow?.();
+    if (!r?.ok) msFixLog(`Не удалось перезагрузить ПК: ${r?.error || 'unknown'}`);
   });
 
   $('#btnBedrockXboxFix')?.addEventListener('click', async () => {
@@ -3066,7 +3098,7 @@ function wireUI() {
   });
 
 
-  ['modalVersions', 'modalSettings', 'modalCrash', 'modalBedrockVersions', 'modalBedrockContent', 'modalBedrockVirus', 'modalBedrockExperiments', 'modalProfiles', 'modalAuth'].forEach((id) => {
+  ['modalVersions', 'modalSettings', 'modalCrash', 'modalBedrockVersions', 'modalBedrockContent', 'modalBedrockVirus', 'modalBedrockMsFix', 'modalBedrockExperiments', 'modalProfiles', 'modalAuth'].forEach((id) => {
     const m = document.getElementById(id);
     if (!m) return;
     m.addEventListener('pointerdown', (e) => { if (e.target === m) closeModal(id); });
@@ -3079,6 +3111,7 @@ function wireUI() {
     if (!$('#modalCrash')?.classList.contains('hidden')) closeModal('modalCrash');
     if (!$('#modalBedrockVersions')?.classList.contains('hidden')) closeModal('modalBedrockVersions');
     if (!$('#modalBedrockVirus')?.classList.contains('hidden')) closeModal('modalBedrockVirus');
+    if (!$('#modalBedrockMsFix')?.classList.contains('hidden')) closeModal('modalBedrockMsFix');
     if (!$('#modalBedrockExperiments')?.classList.contains('hidden')) closeModal('modalBedrockExperiments');
     if (!$('#modalLocalServers')?.classList.contains('hidden')) closeModal('modalLocalServers');
     if (!$('#modalProfiles')?.classList.contains('hidden')) closeModal('modalProfiles');

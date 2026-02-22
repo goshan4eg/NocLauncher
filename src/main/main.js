@@ -4622,6 +4622,16 @@ ipcMain.handle('bedrock:xboxQuickFix', async () => {
   }
 });
 
+ipcMain.handle('bedrock:rebootNow', async () => {
+  if (process.platform !== 'win32') return { ok: false, error: 'windows_only' };
+  try {
+    childProcess.execFile('shutdown', ['/r', '/t', '5'], { windowsHide: true }, () => {});
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
 ipcMain.handle('bedrock:managerStatus', async () => {
   if (process.platform !== 'win32') return { supported: false, installed: false };
   const p = getMcDownloaderPaths();
