@@ -1083,7 +1083,8 @@ let bedrockFpsState = {
   max: 0,
   samples: 0,
   lastUpdateTs: 0,
-  error: ''
+  error: '',
+  debug: ''
 };
 
 function emitBedrockFpsState() {
@@ -1172,7 +1173,7 @@ async function startBedrockFpsMonitor() {
     return { ok: false, error: bedrockFpsState.error };
   }
 
-  bedrockFpsState = { enabled: true, backend: 'presentmon', available: true, current: 0, min: 0, max: 0, samples: 0, lastUpdateTs: 0, error: '' };
+  bedrockFpsState = { enabled: true, backend: 'presentmon', available: true, current: 0, min: 0, max: 0, samples: 0, lastUpdateTs: 0, error: '', debug: 'starting' };
   emitBedrockFpsState();
   openBedrockFpsOverlayWindow();
 
@@ -1204,6 +1205,8 @@ async function startBedrockFpsMonitor() {
       header = cols;
       msIdx = ms;
       procIdx = cols.findIndex(h => h === 'processname' || h === 'process_name' || h === 'exename' || h === 'application');
+      bedrockFpsState.debug = `header_ok msIdx=${msIdx} procIdx=${procIdx}`;
+      emitBedrockFpsState();
       return true;
     };
 
@@ -1230,6 +1233,7 @@ async function startBedrockFpsMonitor() {
       bedrockFpsState.max = Math.max(bedrockFpsState.max || 0, fps);
       bedrockFpsState.samples = (bedrockFpsState.samples || 0) + 1;
       bedrockFpsState.lastUpdateTs = Date.now();
+      bedrockFpsState.debug = `samples=${bedrockFpsState.samples} src=stream`;
       emitBedrockFpsState();
     };
 
@@ -1251,7 +1255,11 @@ async function startBedrockFpsMonitor() {
 
     const pollCsvFallback = () => {
       try {
-        if (!bedrockFpsCsvPath || !fs.existsSync(bedrockFpsCsvPath)) return;
+        if (!bedrockFpsCsvPath || !fs.existsSync(bedrockFpsCsvPath)) {
+          bedrockFpsState.debug = 'csv_missing';
+          emitBedrockFpsState();
+          return;
+        }
         const txt = fs.readFileSync(bedrockFpsCsvPath, 'utf8');
         const lines = String(txt || '').split(/\r?\n/).filter(Boolean);
         if (!lines.length) return;
