@@ -4733,7 +4733,7 @@ ipcMain.handle('bedrock:launch', async () => {
         const running = isBedrockRunning();
         if (running) {
           appendBedrockLaunchLog('INFO: Bedrock process detected');
-          try { await startBedrockFpsMonitor(); } catch (_) {}
+          // FPS monitor is manual-only: do not auto-start on Bedrock launch.
           sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
         } else {
           appendBedrockLaunchLog('ERROR: Bedrock process not detected after 4s');
