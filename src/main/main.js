@@ -1179,8 +1179,7 @@ async function startBedrockFpsMonitor() {
   try {
     const args = [
       '--session_name','NocFPS','--stop_existing_session',
-      '--process_name','Minecraft.Windows.exe','--process_name','MinecraftWindowsBeta.exe','--process_name','javaw.exe','--process_name','java.exe',
-      '--output_stdout','--no_console_stats','--v1_metrics','--terminate_on_proc_exit'
+      '--output_stdout','--no_console_stats','--v1_metrics'
     ];
 
     // Spawn directly hidden (no powershell/start-process wrapper).
@@ -1243,7 +1242,6 @@ async function startBedrockFpsMonitor() {
       bedrockFpsState.enabled = false;
       bedrockFpsState.error = stderrText || 'presentmon_exited_without_samples';
       emitBedrockFpsState();
-      closeBedrockFpsOverlayWindow();
     });
 
     setTimeout(() => {
@@ -1257,7 +1255,6 @@ async function startBedrockFpsMonitor() {
   } catch (e) {
     bedrockFpsState = { ...bedrockFpsState, enabled: false, error: String(e?.message || e) };
     emitBedrockFpsState();
-    closeBedrockFpsOverlayWindow();
     return { ok: false, error: bedrockFpsState.error };
   }
 }
