@@ -540,6 +540,8 @@ textarea.ta{
   transition: transform 140ms var(--ease), background 140ms var(--ease);
 }
 .topPill:hover{ background: rgba(255,255,255,.10); transform: translateY(-1px); }
+.bedrockOnlyTop{ display: none; }
+body.mode-bedrock .bedrockOnlyTop{ display: inline-flex; align-items: center; }
 
 .content{
   flex: 1 1 auto;

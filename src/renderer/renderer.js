@@ -2840,6 +2840,16 @@ function wireUI() {
     }
   });
 
+  $('#btnAddCreatorFriendMain')?.addEventListener('click', async () => {
+    const url = 'https://account.xbox.com/Profile?gamertag=GoshGame5696';
+    try {
+      await window.noc.shellOpenExternal(url);
+      setStatus('Открываю профиль Xbox: GoshGame5696');
+    } catch (_) {
+      setStatus('Не удалось открыть профиль Xbox.');
+    }
+  });
+
   // Crash modal controls
   $('#btnCloseCrash')?.addEventListener('click', () => closeModal('modalCrash'));
   $('#btnOpenCrashLog')?.addEventListener('click', async () => {
