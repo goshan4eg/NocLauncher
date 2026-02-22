@@ -23,20 +23,19 @@
   function paintMiniFpsState(f) {
     const b = $('#btnMiniFps');
     const st = $('#miniFpsStats');
+    const fallbackRow = $('#fpsFallbackRow');
     const on = !!f?.enabled;
     if (b) {
       b.textContent = on ? 'ВКЛ' : 'ВЫКЛ';
       b.classList.toggle('acc', on);
     }
     const cur = Number(f?.current || 0);
-    const min = Number(f?.min || 0);
-    const max = Number(f?.max || 0);
-    const backend = String(f?.backend || 'none');
     const err = String(f?.error || '');
     if (st) {
-      if (err && !on) st.textContent = `FPS: — • MIN: — • MAX: — • ${backend} • ${err}`;
-      else st.textContent = `FPS: ${cur || '—'} • MIN: ${min || '—'} • MAX: ${max || '—'} • ${backend}`;
+      if (cur > 0) st.textContent = `FPS: ${cur}`;
+      else st.textContent = err ? 'FPS: — (нет данных)' : 'FPS: —';
     }
+    if (fallbackRow) fallbackRow.style.display = (on && cur <= 0) ? 'flex' : 'none';
   }
 
   async function refreshMiniFpsState() {
@@ -306,8 +305,12 @@
           setInviteStatus(`FPS монитор: ошибка — ${r?.error || 'unknown'}`);
         }
       } else {
-        setInviteStatus(`FPS монитор: ${on ? 'выключен' : 'включён'} (реальные MIN/MAX из рендера игры)`);
+        setInviteStatus(`FPS монитор: ${on ? 'выключен' : 'включён'}`);
       }
+    });
+    $('#btnFpsFallback')?.addEventListener('click', async () => {
+      const r = await window.noc?.bedrockOpenFpsFallbackTools?.();
+      setInviteStatus(r?.ok ? 'Открыл инструменты FPS (Game Bar/NVIDIA).' : `Не удалось открыть инструменты FPS: ${r?.error || 'unknown'}`);
     });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F8') setCollapsed(!collapsed);

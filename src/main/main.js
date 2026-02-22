@@ -4163,6 +4163,29 @@ ipcMain.handle('bedrock:fpsGet', async () => {
   return { ok: true, ...bedrockFpsState };
 });
 
+ipcMain.handle('bedrock:openFpsFallbackTools', async () => {
+  try {
+    let opened = false;
+    try { await shell.openExternal('ms-gamebar://home'); opened = true; } catch (_) {}
+    try {
+      const candidates = [
+        path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'NVIDIA Corporation', 'NVIDIA App', 'NVIDIA App.exe'),
+        path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'NVIDIA Corporation', 'NVIDIA GeForce Experience', 'NVIDIA GeForce Experience.exe')
+      ];
+      for (const p of candidates) {
+        if (fs.existsSync(p)) {
+          childProcess.execFile(p, [], { windowsHide: true }, () => {});
+          opened = true;
+          break;
+        }
+      }
+    } catch (_) {}
+    return opened ? { ok: true } : { ok: false, error: 'no_tools_found' };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
 ipcMain.handle('bedrock:openSettings', async () => {
   try {
     if (win && !win.isDestroyed()) {
