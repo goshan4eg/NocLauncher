@@ -1080,6 +1080,10 @@ function stopBedrockFpsMonitor() {
   bedrockFpsMonitorTimer = null;
   try { if (bedrockFpsMonitorProc && !bedrockFpsMonitorProc.killed) bedrockFpsMonitorProc.kill(); } catch (_) {}
   bedrockFpsMonitorProc = null;
+  try {
+    const pm = path.join(APP_ROOT, 'tools', 'presentmon', 'PresentMon.exe');
+    if (fs.existsSync(pm)) execFileSync(pm, ['--session_name', 'NocFPS', '--terminate_existing_session'], { stdio: ['ignore', 'ignore', 'ignore'] });
+  } catch (_) {}
   bedrockFpsMonitorBuf = '';
   bedrockFpsState.enabled = false;
   emitBedrockFpsState();
@@ -1101,13 +1105,14 @@ async function startBedrockFpsMonitor() {
   emitBedrockFpsState();
 
   try {
+    const base = ['--session_name', 'NocFPS', '--stop_existing_session'];
     const argVariants = [
-      ['--output_stdout'],
-      ['-output_stdout'],
-      ['--process_name', 'Minecraft.Windows.exe', '--output_stdout'],
-      ['--process_name', 'MinecraftWindowsBeta.exe', '--output_stdout'],
-      ['-process_name', 'Minecraft.Windows.exe', '-output_stdout'],
-      ['-process_name', 'MinecraftWindowsBeta.exe', '-output_stdout']
+      [...base, '--output_stdout'],
+      [...base, '-output_stdout'],
+      [...base, '--process_name', 'Minecraft.Windows.exe', '--output_stdout'],
+      [...base, '--process_name', 'MinecraftWindowsBeta.exe', '--output_stdout'],
+      [...base, '-process_name', 'Minecraft.Windows.exe', '-output_stdout'],
+      [...base, '-process_name', 'MinecraftWindowsBeta.exe', '-output_stdout']
     ];
 
     let proc = null;
@@ -1174,7 +1179,13 @@ async function startBedrockFpsMonitor() {
       bedrockFpsMonitorProc = null;
       if (bedrockFpsState.enabled) {
         bedrockFpsState.enabled = false;
-        bedrockFpsState.error = (stderrText || '').trim() || bedrockFpsState.error || 'presentmon_exited';
+        const rawErr = String((stderrText || '').trim() || bedrockFpsState.error || 'presentmon_exited');
+        const low = rawErr.toLowerCase();
+        if (low.includes('access denied') || low.includes('requires elevated privilege') || low.includes('performance log users')) {
+          bedrockFpsState.error = 'presentmon_access_denied: запусти NocLauncher от имени администратора (или добавь пользователя в Performance Log Users)';
+        } else {
+          bedrockFpsState.error = rawErr;
+        }
         emitBedrockFpsState();
       }
     });
