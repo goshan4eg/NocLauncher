@@ -2671,6 +2671,7 @@ function wireUI() {
     await renderBedrockOptions();
     openModal('modalBedrockSettings');
   };
+  window.noc?.onUiOpenBedrockSettings?.(() => { openBedrockSettings(); });
   $('#btnBedrockGfx')?.addEventListener('click', openBedrockSettings);
   $('#btnBedrockSettings')?.addEventListener('click', openBedrockSettings);
   $('#btnCloseBedrockContent')?.addEventListener('click', () => closeModal('modalBedrockContent'));
@@ -2725,6 +2726,15 @@ function wireUI() {
   $('#btnBrPresetMed')?.addEventListener('click', async () => applyBedrockPreset('medium'));
   $('#btnBrPresetHigh')?.addEventListener('click', async () => applyBedrockPreset('high'));
   $('#btnBrPresetUltra')?.addEventListener('click', async () => applyBedrockPreset('ultra'));
+  $('#btnBrLiveFps')?.addEventListener('click', async () => {
+    const on = getBedrockLiveFpsState(state.bedrockOptions || []);
+    const next = on ? '0' : '1';
+    for (const k of BEDROCK_LIVE_FPS_KEYS) {
+      await window.noc?.bedrockOptionsSet?.(k, next);
+    }
+    setStatus(`Bedrock: живой счётчик FPS ${next === '1' ? 'включён' : 'выключен'}`);
+    await renderBedrockOptions();
+  });
   $('#brOptSearch')?.addEventListener('input', () => renderBedrockOptionsList());
   $('#btnBrUsefulOnly')?.addEventListener('click', () => {
     state.bedrockUsefulOnly = !state.bedrockUsefulOnly;
@@ -3420,6 +3430,26 @@ async function renderBedrockContent(tab) {
 }
 
 // Bedrock options (options.txt)
+const BEDROCK_LIVE_FPS_KEYS = ['gfx_showfps', 'show_fps', 'dev_show_fps', 'dev_showfps', 'fps_counter'];
+
+function getBedrockLiveFpsState(items) {
+  const map = new Map((items || []).map(it => [String(it.key || '').toLowerCase(), String(it.value ?? '').trim().toLowerCase()]));
+  for (const k of BEDROCK_LIVE_FPS_KEYS) {
+    if (!map.has(k)) continue;
+    const v = map.get(k);
+    return (v === '1' || v === 'true');
+  }
+  return false;
+}
+
+function paintBedrockLiveFpsBtn() {
+  const btn = $('#btnBrLiveFps');
+  if (!btn) return;
+  const on = getBedrockLiveFpsState(state.bedrockOptions || []);
+  btn.textContent = `Живой FPS: ${on ? 'ВКЛ' : 'ВЫКЛ'}`;
+  btn.classList.toggle('acc', on);
+}
+
 async function renderBedrockOptions() {
   const hint = $('#bedrockOptionsHint');
   const list = $('#brOptionsList');
@@ -3432,14 +3462,17 @@ async function renderBedrockOptions() {
       if (hint) hint.textContent = `Не удалось прочитать options.txt: ${r?.error || 'unknown'}`;
       state.bedrockOptions = [];
       renderBedrockOptionsList();
+      paintBedrockLiveFpsBtn();
       return;
     }
     state.bedrockOptions = r.items || [];
     if (hint) hint.textContent = `options.txt: ${r.path || '—'} • параметров: ${state.bedrockOptions.length}`;
     renderBedrockOptionsList();
+    paintBedrockLiveFpsBtn();
   } catch (e) {
     state.bedrockOptions = [];
     if (hint) hint.textContent = `Не удалось прочитать options.txt: ${e?.message || e}`;
+    paintBedrockLiveFpsBtn();
   }
 }
 
@@ -3459,6 +3492,7 @@ const BEDROCK_OPTION_DESCRIPTIONS = {
   'gfx_toggleclouds': 'Отображение облаков. ВКЛ: больше атмосферы, ВЫКЛ: +FPS и чище обзор.',
   'gfx_max_framerate': 'Лимит FPS (0 = без лимита).',
   'gfx_vsync': 'Вертикальная синхронизация. ВКЛ: меньше разрывов кадра, но иногда больше задержка.',
+  'gfx_showfps': 'Живой счётчик FPS в игре (в верхнем углу). ВКЛ: показывает текущий FPS.',
   'gfx_field_of_view': 'Угол обзора (FOV). Выше = шире обзор, но сильнее искажение.',
   'gfx_particles': 'Количество частиц (эффекты).',
   'gfx_bloom': 'Эффект свечения (Bloom). ВКЛ: сочнее картинка, ВЫКЛ: выше производительность.',

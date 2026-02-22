@@ -3815,6 +3815,21 @@ ipcMain.handle('bedrock:hubSetCollapsed', async (_e, payload) => {
   return setBedrockHubCollapsed(!!payload?.collapsed);
 });
 
+ipcMain.handle('bedrock:openSettings', async () => {
+  try {
+    if (win && !win.isDestroyed()) {
+      if (win.isMinimized()) win.restore();
+      win.show();
+      win.focus();
+      win.webContents.send('ui:openBedrockSettings');
+      return { ok: true };
+    }
+    return { ok: false, error: 'main_window_unavailable' };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
 ipcMain.handle('bedrock:hostStatus', async () => {
   const registryUrl = await ensureRegistryUrlAuto();
   const meta = detectBedrockWorldMeta();

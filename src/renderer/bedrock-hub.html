@@ -33,11 +33,12 @@
     .join{background:var(--green);color:#133b0b;border:0;border-radius:9px;padding:10px 12px;font-weight:900;cursor:pointer}
     .join:disabled{opacity:.5}
 
-    .miniDock{display:none;position:fixed;top:8px;right:8px;z-index:9999}
+    .miniDock{display:none;position:fixed;top:8px;right:8px;z-index:9999;gap:8px;align-items:center}
     .miniBtn{border:1px solid rgba(255,255,255,.18);background:rgba(24,30,45,.88);color:#fff;border-radius:12px;padding:8px 12px;font-weight:900;cursor:pointer}
+    #btnMiniSettings{padding:8px 10px;min-width:40px}
     body.collapsed .wrap{padding:0}
     body.collapsed .shell{display:none}
-    body.collapsed .miniDock{display:block}
+    body.collapsed .miniDock{display:flex}
   </style>
 </head>
 <body>
@@ -82,6 +83,7 @@
   </div>
   <div class="miniDock" id="miniDock">
     <button class="miniBtn" id="btnExpand">Открыть панель</button>
+    <button class="miniBtn" id="btnMiniSettings" title="Настройки Bedrock" aria-label="Настройки Bedrock">⚙</button>
   </div>
   <script src="./bedrock-hub.js"></script>
 </body>

@@ -252,6 +252,11 @@
 
     $('#btnCollapse')?.addEventListener('click', () => setCollapsed(!collapsed));
     $('#btnExpand')?.addEventListener('click', () => setCollapsed(false));
+    $('#btnMiniSettings')?.addEventListener('click', async () => {
+      const r = await window.noc?.bedrockOpenSettings?.();
+      if (r?.ok) setInviteStatus('Открываю настройки Bedrock…');
+      else setInviteStatus(`Не удалось открыть настройки: ${r?.error || 'unknown'}`);
+    });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F8') setCollapsed(!collapsed);
     });
