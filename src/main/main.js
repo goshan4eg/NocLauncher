@@ -691,6 +691,60 @@ function appendBedrockLaunchLog(line) {
   }
 }
 
+async function bedrockPreflightChecks() {
+  if (process.platform !== 'win32') return { ok: false, critical: true, error: 'windows_only' };
+
+  const hasPkg = async (name) => {
+    try {
+      const out = await runPowerShellAsync(`(Get-AppxPackage -Name ${name} | Select-Object -First 1 Name).Name`);
+      return !!String(out || '').trim();
+    } catch (_) { return false; }
+  };
+  const svcState = async (name) => {
+    try {
+      const out = await runPowerShellAsync(`(Get-Service -Name '${name}' -ErrorAction SilentlyContinue).Status`);
+      return String(out || '').trim();
+    } catch (_) { return ''; }
+  };
+
+  const minecraftInstalled = await hasPkg('Microsoft.MinecraftUWP');
+  const gamingServicesInstalled = await hasPkg('Microsoft.GamingServices');
+  const xboxIdentityInstalled = await hasPkg('Microsoft.XboxIdentityProvider');
+
+  const clip = await svcState('ClipSVC');
+  const bits = await svcState('BITS');
+  const wu = await svcState('wuauserv');
+  const gs = await svcState('GamingServices');
+  const gsn = await svcState('GamingServicesNet');
+
+  const criticalMissing = [];
+  if (!minecraftInstalled) criticalMissing.push('Minecraft for Windows');
+  if (!gamingServicesInstalled) criticalMissing.push('Gaming Services');
+
+  const serviceProblems = [];
+  if (!['Running', 'StartPending'].includes(clip)) serviceProblems.push(`ClipSVC=${clip || 'N/A'}`);
+  if (!['Running', 'StartPending'].includes(bits)) serviceProblems.push(`BITS=${bits || 'N/A'}`);
+  if (!['Running', 'StartPending'].includes(wu)) serviceProblems.push(`wuauserv=${wu || 'N/A'}`);
+  if (gs && !['Running', 'StartPending'].includes(gs)) serviceProblems.push(`GamingServices=${gs}`);
+  if (gsn && !['Running', 'StartPending'].includes(gsn)) serviceProblems.push(`GamingServicesNet=${gsn}`);
+
+  return {
+    ok: true,
+    critical: criticalMissing.length > 0,
+    criticalMissing,
+    warnings: [
+      ...(!xboxIdentityInstalled ? ['Xbox Identity Provider missing'] : []),
+      ...serviceProblems
+    ],
+    details: {
+      minecraftInstalled,
+      gamingServicesInstalled,
+      xboxIdentityInstalled,
+      services: { ClipSVC: clip, BITS: bits, wuauserv: wu, GamingServices: gs, GamingServicesNet: gsn }
+    }
+  };
+}
+
 // Aggregated install progress (across libs/assets/natives)
 let aggProgress = { totals: {}, currents: {}, lastSent: 0 };
 function resetAggProgress() { aggProgress = { totals: {}, currents: {}, lastSent: 0 }; }
@@ -4341,6 +4395,20 @@ ipcMain.handle('bedrock:launch', async () => {
   let bedrockLogPath = null;
   try {
     bedrockLogPath = appendBedrockLaunchLog('INFO: Bedrock launch requested');
+
+    // Preflight checks before launch
+    const pf = await bedrockPreflightChecks();
+    appendBedrockLaunchLog(`INFO: preflight=${JSON.stringify(pf)}`);
+    if (!pf?.ok) {
+      return { ok: false, error: `Preflight не выполнен: ${pf?.error || 'unknown'}`, logPath: bedrockLogPath || '' };
+    }
+    if (pf.critical) {
+      return {
+        ok: false,
+        error: `Bedrock не готов к запуску: ${pf.criticalMissing.join(', ')}. Открой MS Fix/Xbox Fixer.`,
+        logPath: bedrockLogPath || ''
+      };
+    }
 
     // Try to add server entry first (harmless if already present)
     await ensureBedrockServerLink();
