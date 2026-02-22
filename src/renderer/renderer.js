@@ -2732,7 +2732,8 @@ function wireUI() {
     for (const k of BEDROCK_LIVE_FPS_KEYS) {
       await window.noc?.bedrockOptionsSet?.(k, next);
     }
-    setStatus(`Bedrock: живой счётчик FPS ${next === '1' ? 'включён' : 'выключен'}`);
+    if (next === '1') await window.noc?.bedrockOptionsSet?.('gfx_hidehud', '0');
+    setStatus(`Bedrock: живой счётчик FPS ${next === '1' ? 'включён' : 'выключен'} (если игра запущена — перезапусти Bedrock)`);
     await renderBedrockOptions();
   });
   $('#brOptSearch')?.addEventListener('input', () => renderBedrockOptionsList());
@@ -3430,7 +3431,7 @@ async function renderBedrockContent(tab) {
 }
 
 // Bedrock options (options.txt)
-const BEDROCK_LIVE_FPS_KEYS = ['gfx_showfps', 'show_fps', 'dev_show_fps', 'dev_showfps', 'fps_counter'];
+const BEDROCK_LIVE_FPS_KEYS = ['dev_debug_hud', 'gfx_showfps', 'show_fps', 'dev_show_fps', 'dev_showfps', 'fps_counter'];
 
 function getBedrockLiveFpsState(items) {
   const map = new Map((items || []).map(it => [String(it.key || '').toLowerCase(), String(it.value ?? '').trim().toLowerCase()]));
@@ -3493,6 +3494,7 @@ const BEDROCK_OPTION_DESCRIPTIONS = {
   'gfx_max_framerate': 'Лимит FPS (0 = без лимита).',
   'gfx_vsync': 'Вертикальная синхронизация. ВКЛ: меньше разрывов кадра, но иногда больше задержка.',
   'gfx_showfps': 'Живой счётчик FPS в игре (в верхнем углу). ВКЛ: показывает текущий FPS.',
+  'dev_debug_hud': 'Debug HUD (включает служебный оверлей, где виден FPS).',
   'gfx_field_of_view': 'Угол обзора (FOV). Выше = шире обзор, но сильнее искажение.',
   'gfx_particles': 'Количество частиц (эффекты).',
   'gfx_bloom': 'Эффект свечения (Bloom). ВКЛ: сочнее картинка, ВЫКЛ: выше производительность.',

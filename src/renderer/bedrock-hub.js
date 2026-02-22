@@ -6,7 +6,7 @@
   let streamerMode = false;
   let collapsed = false;
   let miniMenuOpen = false;
-  const LIVE_FPS_KEYS = ['gfx_showfps', 'show_fps', 'dev_show_fps', 'dev_showfps', 'fps_counter'];
+  const LIVE_FPS_KEYS = ['dev_debug_hud', 'gfx_showfps', 'show_fps', 'dev_show_fps', 'dev_showfps', 'fps_counter'];
 
   function paintCollapsed() {
     document.body.classList.toggle('collapsed', collapsed);
@@ -293,8 +293,9 @@
       for (const k of LIVE_FPS_KEYS) {
         await window.noc?.bedrockOptionsSet?.(k, next);
       }
+      if (next === '1') await window.noc?.bedrockOptionsSet?.('gfx_hidehud', '0');
       await paintMiniFpsToggle();
-      setInviteStatus(`FPS-счётчик: ${next === '1' ? 'включён' : 'выключен'}`);
+      setInviteStatus(`FPS-счётчик: ${next === '1' ? 'включён' : 'выключен'} (если игра открыта — перезапусти Bedrock)`);
     });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F8') setCollapsed(!collapsed);
