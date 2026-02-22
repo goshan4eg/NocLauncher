@@ -4776,7 +4776,7 @@ function readBedrockTreatments() {
 }
 
 function writeBedrockTreatments(filePath, tags, data = {}) {
-  const out = { ...(data || {}), tags: Array.from(new Set((tags || []).map(x => String(x || '').trim()).filter(Boolean)) };
+  const out = { ...(data || {}), tags: Array.from(new Set((tags || []).map(x => String(x || '').trim()).filter(Boolean))) };
   fs.writeFileSync(filePath, JSON.stringify(out, null, 2), 'utf8');
 }
 
