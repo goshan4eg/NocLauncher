@@ -745,6 +745,28 @@ async function bedrockPreflightChecks() {
   };
 }
 
+async function collectBedrockLaunchFailureDiagnostics() {
+  const out = {
+    preflight: null,
+    appInfo: null,
+    startApps: '',
+    protocol: '',
+    packageList: ''
+  };
+  try { out.preflight = await bedrockPreflightChecks(); } catch (_) {}
+  try { out.appInfo = getBedrockAppInfo(); } catch (_) {}
+  try {
+    out.startApps = await runPowerShellAsync("Get-StartApps | Where-Object { $_.Name -match 'Minecraft' -or $_.AppID -match 'Minecraft' } | Select-Object Name,AppID | ConvertTo-Json -Compress");
+  } catch (_) {}
+  try {
+    out.protocol = await runPowerShellAsync("Get-ItemProperty -Path 'HKCU:\\Software\\Classes\\minecraft\\shell\\open\\command' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty '(default)' -ErrorAction SilentlyContinue");
+  } catch (_) {}
+  try {
+    out.packageList = await runPowerShellAsync("Get-AppxPackage -Name Microsoft.MinecraftUWP,Microsoft.GamingServices,Microsoft.XboxIdentityProvider,Microsoft.GamingApp | Select-Object Name,Version,PackageFamilyName | ConvertTo-Json -Compress");
+  } catch (_) {}
+  return out;
+}
+
 // Aggregated install progress (across libs/assets/natives)
 let aggProgress = { totals: {}, currents: {}, lastSent: 0 };
 function resetAggProgress() { aggProgress = { totals: {}, currents: {}, lastSent: 0 }; }
@@ -4462,10 +4484,16 @@ ipcMain.handle('bedrock:launch', async () => {
     }
 
     // Non-blocking diagnostics in background (do not block launch path)
-    setTimeout(() => {
+    setTimeout(async () => {
       try {
         const running = isBedrockRunning();
-        appendBedrockLaunchLog(running ? 'INFO: Bedrock process detected' : 'WARN: Bedrock process not detected after 4s');
+        if (running) {
+          appendBedrockLaunchLog('INFO: Bedrock process detected');
+        } else {
+          appendBedrockLaunchLog('ERROR: Bedrock process not detected after 4s');
+          const diag = await collectBedrockLaunchFailureDiagnostics();
+          appendBedrockLaunchLog(`ERROR: failure-diagnostics=${JSON.stringify(diag)}`);
+        }
       } catch (e) {
         appendBedrockLaunchLog(`WARN: post-launch check failed: ${String(e?.message || e)}`);
       }
