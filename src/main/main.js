@@ -1177,13 +1177,19 @@ async function startBedrockFpsMonitor() {
   openBedrockFpsOverlayWindow();
 
   try {
+    const fpsDir = path.join(APP_ROOT, 'tools', 'presentmon');
+    ensureDir(fpsDir);
+    bedrockFpsCsvPath = path.join(fpsDir, 'noc-fps.csv');
+    try { if (fs.existsSync(bedrockFpsCsvPath)) fs.unlinkSync(bedrockFpsCsvPath); } catch (_) {}
+
     const args = [
       '--session_name','NocFPS','--stop_existing_session',
-      '--output_stdout','--no_console_stats','--v1_metrics'
+      '--output_stdout','--output_file', bedrockFpsCsvPath,
+      '--no_console_stats','--v1_metrics'
     ];
 
     // Spawn directly hidden (no powershell/start-process wrapper).
-    const proc = childProcess.spawn(pm.exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    const proc = childProcess.spawn(pm.exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     bedrockFpsMonitorProc = proc;
 
     let header = null;
@@ -1191,13 +1197,21 @@ async function startBedrockFpsMonitor() {
     let procIdx = -1;
     let stderrText = '';
 
+    const tryParseHeader = (s) => {
+      const cols = s.split(',').map(x => String(x || '').trim().toLowerCase().replace(/"/g, ''));
+      const ms = cols.findIndex(h => h === 'msbetweenpresents' || h === 'ms between presents');
+      if (ms < 0) return false;
+      header = cols;
+      msIdx = ms;
+      procIdx = cols.findIndex(h => h === 'processname' || h === 'process_name' || h === 'exename' || h === 'application');
+      return true;
+    };
+
     const onLine = (line) => {
       const s = String(line || '').trim();
       if (!s) return;
       if (!header) {
-        header = s.split(',').map(x => String(x || '').trim().toLowerCase().replace(/"/g, ''));
-        msIdx = header.findIndex(h => h === 'msbetweenpresents' || h === 'ms between presents');
-        procIdx = header.findIndex(h => h === 'processname' || h === 'process_name' || h === 'exename' || h === 'application');
+        if (!tryParseHeader(s)) return;
         return;
       }
       const parts = s.split(',').map(x => String(x || '').trim().replace(/^"|"$/g, ''));
@@ -1235,8 +1249,23 @@ async function startBedrockFpsMonitor() {
       stderrText = `${stderrText}\n${s}`.slice(-800);
     });
 
+    const pollCsvFallback = () => {
+      try {
+        if (!bedrockFpsCsvPath || !fs.existsSync(bedrockFpsCsvPath)) return;
+        const txt = fs.readFileSync(bedrockFpsCsvPath, 'utf8');
+        const lines = String(txt || '').split(/\r?\n/).filter(Boolean);
+        if (!lines.length) return;
+        if (!header) tryParseHeader(lines[0]);
+        const tail = lines.slice(-120);
+        for (const ln of tail) onLine(ln);
+      } catch (_) {}
+    };
+    bedrockFpsMonitorTimer = setInterval(pollCsvFallback, 1200);
+
     proc.on('exit', () => {
       bedrockFpsMonitorProc = null;
+      try { if (bedrockFpsMonitorTimer) clearInterval(bedrockFpsMonitorTimer); } catch (_) {}
+      bedrockFpsMonitorTimer = null;
       if (!bedrockFpsState.enabled) return;
       if ((bedrockFpsState.samples || 0) > 0) return;
       bedrockFpsState.enabled = false;
