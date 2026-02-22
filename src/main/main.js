@@ -4745,6 +4745,8 @@ function resolveBedrockTreatmentsFile() {
   const p = bedrockPaths();
   if (!p) return null;
   ensureDir(p.minecraftpe);
+
+  // 1) Newer Bedrock format inside minecraftpe
   try {
     const files = fs.readdirSync(p.minecraftpe).filter(n => /^treatment_tags---.*\.json$/i.test(String(n || '')));
     if (files.length) {
@@ -4758,6 +4760,29 @@ function resolveBedrockTreatmentsFile() {
       return path.join(p.minecraftpe, files[0]);
     }
   } catch (_) {}
+
+  // 2) Legacy/alternate format: treatments/treatment_packs*/treatment_tags.json
+  try {
+    const treatmentsRoot = path.join(path.dirname(p.minecraftpe), 'treatments');
+    if (fs.existsSync(treatmentsRoot)) {
+      const packs = fs.readdirSync(treatmentsRoot, { withFileTypes: true })
+        .filter(d => d.isDirectory())
+        .map(d => d.name)
+        .filter(n => /^treatment_packs/i.test(n));
+      const candidates = [];
+      for (const pack of packs) {
+        const fp = path.join(treatmentsRoot, pack, 'treatment_tags.json');
+        if (fs.existsSync(fp)) candidates.push(fp);
+      }
+      if (candidates.length) {
+        candidates.sort((a, b) => {
+          try { return (fs.statSync(b).mtimeMs || 0) - (fs.statSync(a).mtimeMs || 0); } catch (_) { return 0; }
+        });
+        return candidates[0];
+      }
+    }
+  } catch (_) {}
+
   return path.join(p.minecraftpe, 'treatment_tags---noclauncher.json');
 }
 
