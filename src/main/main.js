@@ -4326,6 +4326,24 @@ ipcMain.handle('bedrock:microsoftDiag', async () => {
       return !!String(out || '').trim();
     } catch (_) { return false; }
   };
+  const getPkgVersion = async (name) => {
+    try {
+      const out = await runPowerShellAsync(`(Get-AppxPackage -Name ${name} | Select-Object -First 1 Version).Version`);
+      return String(out || '').trim();
+    } catch (_) { return ''; }
+  };
+  const cmpVer = (a, b) => {
+    const pa = String(a || '').split('.').map(x => Number(x) || 0);
+    const pb = String(b || '').split('.').map(x => Number(x) || 0);
+    const n = Math.max(pa.length, pb.length);
+    for (let i = 0; i < n; i++) {
+      const da = pa[i] || 0;
+      const db = pb[i] || 0;
+      if (da > db) return 1;
+      if (da < db) return -1;
+    }
+    return 0;
+  };
   const serviceOk = async (name) => {
     try {
       const out = await runPowerShellAsync(`(Get-Service -Name '${name}' -ErrorAction SilentlyContinue).Status`);
@@ -4335,11 +4353,18 @@ ipcMain.handle('bedrock:microsoftDiag', async () => {
   };
 
   try {
+    const storeVersion = await getPkgVersion('Microsoft.WindowsStore');
+    const minStoreVersion = '22310.1401.8.0';
+    const storeOutdated = !storeVersion ? true : (cmpVer(storeVersion, minStoreVersion) < 0);
     return {
       ok: true,
       minecraftInstalled: await hasPkg('Microsoft.MinecraftUWP'),
       gamingServicesInstalled: await hasPkg('Microsoft.GamingServices'),
       xboxIdentityInstalled: await hasPkg('Microsoft.XboxIdentityProvider'),
+      storeInstalled: await hasPkg('Microsoft.WindowsStore'),
+      storeVersion,
+      minStoreVersion,
+      storeOutdated,
       storeServiceOk: await serviceOk('ClipSVC'),
       wuServiceOk: await serviceOk('wuauserv'),
       bitsServiceOk: await serviceOk('BITS')
@@ -4369,6 +4394,11 @@ ipcMain.handle('bedrock:microsoftQuickFix', async () => {
       await runPowerShellAsync("$ErrorActionPreference='SilentlyContinue'; Get-AppxPackage -Name Microsoft.GamingServices | Remove-AppxPackage; Start-Sleep -Seconds 1; Start-Process 'ms-windows-store://pdp/?productid=9MWPM2CQNLHN'; 'ok'");
       mark('reinstall_gaming_services', true);
     } catch (e) { mark('reinstall_gaming_services', false, e?.message || e); }
+
+    try {
+      await shell.openExternal('ms-windows-store://downloadsandupdates');
+      mark('open_store_updates', true);
+    } catch (e) { mark('open_store_updates', false, e?.message || e); }
 
     try {
       await shell.openExternal('ms-windows-store://pdp/?PFN=Microsoft.MinecraftUWP_8wekyb3d8bbwe');

@@ -2563,6 +2563,8 @@ function wireUI() {
     if (!d.minecraftInstalled) missing.push('Minecraft for Windows');
     if (!d.gamingServicesInstalled) missing.push('Gaming Services');
     if (!d.xboxIdentityInstalled) missing.push('Xbox Identity Provider');
+    if (!d.storeInstalled) missing.push('Microsoft Store');
+    if (d.storeOutdated) missing.push(`Store outdated (${d.storeVersion || 'unknown'} < ${d.minStoreVersion || 'target'})`);
     if (!d.storeServiceOk) missing.push('ClipSVC');
     if (!d.wuServiceOk) missing.push('Windows Update (wuauserv)');
     if (!d.bitsServiceOk) missing.push('BITS');
