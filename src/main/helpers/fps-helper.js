@@ -18,6 +18,8 @@ if (!pmExe || !csvPath) {
 
 let pmProc = null;
 let pollTimer = null;
+let healthTimer = null;
+let sampleCount = 0;
 let header = null;
 let msIdx = -1;
 let procIdx = -1;
@@ -87,6 +89,7 @@ function pollCsv() {
 
     const picked = bestGame || bestDwm || bestAny;
     if (!picked) return;
+    sampleCount += 1;
     emit({ type: 'fps', current: Number(picked.fps || 0), source: bestGame ? 'game' : (bestDwm ? 'dwm' : 'any') });
   } catch (e) {
     emit({ type: 'debug', message: `csv_err:${String(e?.message || e)}` });
@@ -96,6 +99,8 @@ function pollCsv() {
 function stop() {
   try { if (pollTimer) clearInterval(pollTimer); } catch (_) {}
   pollTimer = null;
+  try { if (healthTimer) clearTimeout(healthTimer); } catch (_) {}
+  healthTimer = null;
   try { if (pmProc && !pmProc.killed) pmProc.kill(); } catch (_) {}
   pmProc = null;
   try {
@@ -109,13 +114,17 @@ try {
   try { if (fs.existsSync(csvPath)) fs.unlinkSync(csvPath); } catch (_) {}
 
   const args = [
-    '--session_name','NocFPS','--stop_existing_session',
+    '--session_name','NocFPS','--stop_existing_session','--restart_as_admin',
     '--output_file', csvPath,
     '--no_console_stats','--v1_metrics'
   ];
   pmProc = spawn(pmExe, args, { windowsHide: true, stdio: ['ignore', 'ignore', 'ignore'] });
   pollTimer = setInterval(pollCsv, 700);
   setTimeout(pollCsv, 800);
+  healthTimer = setTimeout(() => {
+    if (sampleCount > 0) return;
+    emit({ type: 'error', message: 'no_samples_6s: likely missing admin/perf-log-users access' });
+  }, 6000);
   emit({ type: 'started' });
 
   pmProc.on('exit', () => {
