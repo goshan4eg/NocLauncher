@@ -15,9 +15,10 @@
     if (c) c.textContent = collapsed ? 'Показать' : 'Скрыть';
   }
 
-  function setMiniMenuOpen(next) {
+  async function setMiniMenuOpen(next) {
     miniMenuOpen = !!next;
     paintCollapsed();
+    try { await window.noc?.bedrockHubQuickMenuSetOpen?.(miniMenuOpen); } catch (_) {}
   }
 
   async function readLiveFpsEnabled() {
@@ -44,7 +45,10 @@
 
   async function setCollapsed(next) {
     collapsed = !!next;
-    if (!collapsed) miniMenuOpen = false;
+    if (!collapsed) {
+      miniMenuOpen = false;
+      try { await window.noc?.bedrockHubQuickMenuSetOpen?.(false); } catch (_) {}
+    }
     try { localStorage.setItem('noc.bedrockHub.collapsed', collapsed ? '1' : '0'); } catch (_) {}
     paintCollapsed();
     try { await window.noc.bedrockHubSetCollapsed(collapsed); } catch (_) {}

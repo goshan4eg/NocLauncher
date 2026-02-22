@@ -567,6 +567,9 @@ let splashWin = null;
 let bedrockHubWin = null;
 const BEDROCK_HUB_EXPANDED = { width: 760, height: 480, minWidth: 680, minHeight: 420 };
 const BEDROCK_HUB_COLLAPSED = { width: 220, height: 56, minWidth: 220, minHeight: 56 };
+const BEDROCK_HUB_COLLAPSED_MENU = { width: 220, height: 132, minWidth: 220, minHeight: 56 };
+let bedrockHubCollapsedState = false;
+let bedrockHubQuickMenuOpen = false;
 let launcherClient = null;
 let pendingAuth = null;
 let pendingAuthId = null;
@@ -929,6 +932,8 @@ function openBedrockHubWindow() {
       bedrockHubWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     } catch (_) {}
 
+    bedrockHubCollapsedState = false;
+    bedrockHubQuickMenuOpen = false;
     bedrockHubWin.on('closed', () => { bedrockHubWin = null; });
     bedrockHubWin.loadFile(path.join(RENDERER_DIR, 'bedrock-hub.html'));
     return { ok: true, reused: false };
@@ -937,18 +942,40 @@ function openBedrockHubWindow() {
   }
 }
 
+function applyBedrockHubBounds() {
+  if (!bedrockHubWin || bedrockHubWin.isDestroyed()) return { ok: false, error: 'hub_not_open' };
+  const area = screen.getDisplayMatching(bedrockHubWin.getBounds())?.workArea || screen.getPrimaryDisplay().workArea;
+  const mode = bedrockHubCollapsedState
+    ? (bedrockHubQuickMenuOpen ? BEDROCK_HUB_COLLAPSED_MENU : BEDROCK_HUB_COLLAPSED)
+    : BEDROCK_HUB_EXPANDED;
+  bedrockHubWin.setMinimumSize(mode.minWidth, mode.minHeight);
+  bedrockHubWin.setSize(mode.width, mode.height, true);
+  const [w, h] = bedrockHubWin.getSize();
+  const x = Math.max(area.x + 8, area.x + area.width - w - 12);
+  const y = area.y + 10;
+  bedrockHubWin.setPosition(x, y);
+  return { ok: true };
+}
+
 function setBedrockHubCollapsed(collapsed) {
   try {
     if (!bedrockHubWin || bedrockHubWin.isDestroyed()) return { ok: false, error: 'hub_not_open' };
-    const area = screen.getDisplayMatching(bedrockHubWin.getBounds())?.workArea || screen.getPrimaryDisplay().workArea;
-    const mode = collapsed ? BEDROCK_HUB_COLLAPSED : BEDROCK_HUB_EXPANDED;
-    bedrockHubWin.setMinimumSize(mode.minWidth, mode.minHeight);
-    bedrockHubWin.setSize(mode.width, mode.height, true);
-    const [w, h] = bedrockHubWin.getSize();
-    const x = Math.max(area.x + 8, area.x + area.width - w - 12);
-    const y = area.y + 10;
-    bedrockHubWin.setPosition(x, y);
-    return { ok: true, collapsed: !!collapsed };
+    bedrockHubCollapsedState = !!collapsed;
+    if (!bedrockHubCollapsedState) bedrockHubQuickMenuOpen = false;
+    const r = applyBedrockHubBounds();
+    return { ok: !!r?.ok, collapsed: bedrockHubCollapsedState, menuOpen: bedrockHubQuickMenuOpen };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
+function setBedrockHubQuickMenuOpen(open) {
+  try {
+    if (!bedrockHubWin || bedrockHubWin.isDestroyed()) return { ok: false, error: 'hub_not_open' };
+    bedrockHubQuickMenuOpen = !!open;
+    if (!bedrockHubCollapsedState && bedrockHubQuickMenuOpen) bedrockHubQuickMenuOpen = false;
+    const r = applyBedrockHubBounds();
+    return { ok: !!r?.ok, collapsed: bedrockHubCollapsedState, menuOpen: bedrockHubQuickMenuOpen };
   } catch (e) {
     return { ok: false, error: String(e?.message || e) };
   }
@@ -3813,6 +3840,10 @@ ipcMain.handle('bedrock:hubOpen', async () => {
 
 ipcMain.handle('bedrock:hubSetCollapsed', async (_e, payload) => {
   return setBedrockHubCollapsed(!!payload?.collapsed);
+});
+
+ipcMain.handle('bedrock:hubQuickMenuSetOpen', async (_e, payload) => {
+  return setBedrockHubQuickMenuOpen(!!payload?.open);
 });
 
 ipcMain.handle('bedrock:openSettings', async () => {
