@@ -23,19 +23,16 @@
   function paintMiniFpsState(f) {
     const b = $('#btnMiniFps');
     const st = $('#miniFpsStats');
-    const fallbackRow = $('#fpsFallbackRow');
     const on = !!f?.enabled;
     if (b) {
       b.textContent = on ? 'ВКЛ' : 'ВЫКЛ';
       b.classList.toggle('acc', on);
     }
-    const cur = Number(f?.current || 0);
     const err = String(f?.error || '');
     if (st) {
-      if (cur > 0) st.textContent = `FPS: ${cur}`;
-      else st.textContent = err ? 'FPS: — (нет данных)' : 'FPS: —';
+      if (!on) st.textContent = 'FPS: выключен';
+      else st.textContent = err ? `FPS: ошибка (${err})` : 'FPS: внешний оверлей';
     }
-    if (fallbackRow) fallbackRow.style.display = (on && cur <= 0) ? 'flex' : 'none';
   }
 
   async function refreshMiniFpsState() {
@@ -299,8 +296,8 @@
       const r = on ? (await window.noc?.bedrockFpsStop?.()) : (await window.noc?.bedrockFpsStart?.());
       await refreshMiniFpsState();
       if (!r?.ok) {
-        if (String(r?.error || '') === 'presentmon_not_bundled') {
-          setInviteStatus('FPS монитор: в сборке нет PresentMon.exe. Добавь tools/presentmon/PresentMon.exe и перезапусти лаунчер.');
+        if (String(r?.error || '') === 'noc_fps_counter_missing') {
+          setInviteStatus('FPS монитор: не найден NocFpsCounter.exe в tools/fps-counter.');
         } else {
           setInviteStatus(`FPS монитор: ошибка — ${r?.error || 'unknown'}`);
         }
@@ -308,10 +305,8 @@
         setInviteStatus(`FPS монитор: ${on ? 'выключен' : 'включён'}`);
       }
     });
-    $('#btnFpsFallback')?.addEventListener('click', async () => {
-      const r = await window.noc?.bedrockOpenFpsFallbackTools?.();
-      setInviteStatus(r?.ok ? 'Открыл инструменты FPS (Game Bar/NVIDIA).' : `Не удалось открыть инструменты FPS: ${r?.error || 'unknown'}`);
-    });
+    // fallback FPS tools removed: launcher uses built-in NocFpsCounter.exe
+
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F8') setCollapsed(!collapsed);
       if (e.key === 'Escape' && miniMenuOpen) setMiniMenuOpen(false);

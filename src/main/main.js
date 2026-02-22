@@ -1071,14 +1071,9 @@ function isBedrockRunning() {
 }
 
 let bedrockFpsMonitorProc = null;
-let bedrockFpsHelperProc = null;
-let bedrockFpsMonitorBuf = '';
-let bedrockFpsMonitorTimer = null;
-let bedrockFpsHideTimer = null;
-let bedrockFpsCsvPath = '';
 let bedrockFpsState = {
   enabled: false,
-  backend: 'none',
+  backend: 'external',
   available: false,
   current: 0,
   min: 0,
@@ -1096,69 +1091,46 @@ function emitBedrockFpsState() {
   try { if (bedrockFpsOverlayWin && !bedrockFpsOverlayWin.isDestroyed()) bedrockFpsOverlayWin.webContents.send('bedrock:fps', payload); } catch (_) {}
 }
 
-function hasPresentMonAccess() {
-  try {
-    const out = execFileSync('powershell', ['-NoProfile', '-Command', "$g=(whoami /groups) -match 'S-1-5-32-559'; if($g){'1'} else {'0'}"], { stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8').trim();
-    if (out === '1') return true;
-  } catch (_) {}
-  return false;
-}
-
-function requestPresentMonAccessSetup() {
-  try {
-    const ps = "$u=$env:USERNAME; Start-Process -Verb RunAs -WindowStyle Hidden -FilePath powershell -ArgumentList '-NoProfile -Command \"try { Add-LocalGroupMember -SID S-1-5-32-559 -Member '''+$u+''' -ErrorAction Stop } catch {}\"'";
-    childProcess.execFile('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps], { windowsHide: true }, () => {});
-    return { ok: true };
-  } catch (e) {
-    return { ok: false, error: String(e?.message || e) };
-  }
-}
-
-async function ensurePresentMonBinary() {
-  // Deterministic mode: no runtime downloads.
-  // We only use bundled/local binary paths to avoid "works/doesn't work" behavior.
-  const toolsDir = path.join(APP_ROOT, 'tools', 'presentmon');
-  ensureDir(toolsDir);
-
+function resolveBedrockFpsCounterBinary() {
   const candidates = [
-    path.join(toolsDir, 'PresentMon.exe'),
-    path.join(toolsDir, 'presentmon.exe'),
-    path.join(APP_ROOT, 'bin', 'PresentMon.exe'),
-    path.join(APP_ROOT, 'assets', 'tools', 'PresentMon.exe')
+    path.join(APP_ROOT, 'tools', 'fps-counter', 'NocFpsCounter.exe'),
+    path.join(APP_ROOT, 'tools', 'fps-counter', 'FpsOverlay.exe'),
+    path.join(APP_ROOT, 'tools', 'FpsOverlay.exe')
   ];
-
   for (const p of candidates) {
-    try {
-      if (p && fs.existsSync(p)) return { ok: true, exe: p, downloaded: false, source: 'bundled' };
-    } catch (_) {}
+    try { if (fs.existsSync(p)) return p; } catch (_) {}
   }
-
-  // Fallback: try system PATH if user installed PresentMon manually.
-  try {
-    const out = execFileSync('where', ['presentmon.exe'], { stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8');
-    const first = String(out || '').split(/\r?\n/).map(s => s.trim()).find(Boolean);
-    if (first && fs.existsSync(first)) return { ok: true, exe: first, downloaded: false, source: 'system' };
-  } catch (_) {}
-
-  return { ok: false, error: 'presentmon_not_bundled' };
+  return '';
 }
 
 function stopBedrockFpsMonitor() {
-  try { if (bedrockFpsMonitorTimer) clearTimeout(bedrockFpsMonitorTimer); } catch (_) {}
-  bedrockFpsMonitorTimer = null;
-  try { if (bedrockFpsHideTimer) clearInterval(bedrockFpsHideTimer); } catch (_) {}
-  bedrockFpsHideTimer = null;
-  try { if (bedrockFpsHelperProc && !bedrockFpsHelperProc.killed) bedrockFpsHelperProc.kill(); } catch (_) {}
-  bedrockFpsHelperProc = null;
-  try { if (bedrockFpsMonitorProc && !bedrockFpsMonitorProc.killed) bedrockFpsMonitorProc.kill(); } catch (_) {}
-  bedrockFpsMonitorProc = null;
   try {
-    const pm = path.join(APP_ROOT, 'tools', 'presentmon', 'PresentMon.exe');
-    if (fs.existsSync(pm)) execFileSync(pm, ['--session_name', 'NocFPS', '--terminate_existing_session'], { stdio: ['ignore', 'ignore', 'ignore'] });
+    if (bedrockFpsMonitorProc && !bedrockFpsMonitorProc.killed) {
+      bedrockFpsMonitorProc.kill();
+    }
   } catch (_) {}
-  bedrockFpsMonitorBuf = '';
-  bedrockFpsCsvPath = '';
-  bedrockFpsState.enabled = false;
+  bedrockFpsMonitorProc = null;
+
+  try {
+    execFileSync('taskkill', ['/F', '/IM', 'NocFpsCounter.exe', '/T'], { stdio: ['ignore', 'ignore', 'ignore'] });
+  } catch (_) {}
+  try {
+    execFileSync('taskkill', ['/F', '/IM', 'FpsOverlay.exe', '/T'], { stdio: ['ignore', 'ignore', 'ignore'] });
+  } catch (_) {}
+
+  bedrockFpsState = {
+    ...bedrockFpsState,
+    enabled: false,
+    available: true,
+    backend: 'external',
+    current: 0,
+    min: 0,
+    max: 0,
+    samples: 0,
+    lastUpdateTs: Date.now(),
+    error: '',
+    debug: 'stopped'
+  };
   emitBedrockFpsState();
   closeBedrockFpsOverlayWindow();
   return { ok: true };
@@ -1166,87 +1138,66 @@ function stopBedrockFpsMonitor() {
 
 async function startBedrockFpsMonitor() {
   if (process.platform !== 'win32') return { ok: false, error: 'windows_only' };
-  if (bedrockFpsState.enabled) return { ok: true, already: true };
+  if (bedrockFpsState.enabled && bedrockFpsMonitorProc && !bedrockFpsMonitorProc.killed) {
+    return { ok: true, already: true, backend: 'external' };
+  }
 
-  const pm = await ensurePresentMonBinary();
-  if (!pm?.ok) {
-    bedrockFpsState = { ...bedrockFpsState, enabled: false, available: false, backend: 'none', error: pm?.error || 'presentmon_unavailable' };
+  const exePath = resolveBedrockFpsCounterBinary();
+  if (!exePath) {
+    bedrockFpsState = {
+      ...bedrockFpsState,
+      enabled: false,
+      available: false,
+      backend: 'external',
+      error: 'noc_fps_counter_missing',
+      debug: ''
+    };
     emitBedrockFpsState();
     return { ok: false, error: bedrockFpsState.error };
   }
-
-  const helperPath = path.join(APP_ROOT, 'src', 'main', 'helpers', 'fps-helper.js');
-  if (!fs.existsSync(helperPath)) {
-    bedrockFpsState = { ...bedrockFpsState, enabled: false, available: false, backend: 'none', error: 'fps_helper_missing' };
-    emitBedrockFpsState();
-    return { ok: false, error: bedrockFpsState.error };
-  }
-
-  bedrockFpsState = { enabled: true, backend: 'helper', available: true, current: 0, min: 0, max: 0, samples: 0, lastUpdateTs: 0, error: '', debug: 'helper_starting' };
-  emitBedrockFpsState();
-  openBedrockFpsOverlayWindow();
 
   try {
-    const fpsDir = path.join(APP_ROOT, 'tools', 'presentmon');
-    ensureDir(fpsDir);
-    bedrockFpsCsvPath = path.join(fpsDir, 'noc-fps.csv');
-
-    const hp = childProcess.spawn(process.execPath, [helperPath, '--pm', pm.exe, '--csv', bedrockFpsCsvPath], {
+    const proc = childProcess.spawn(exePath, [], {
+      detached: false,
       windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: 'ignore'
     });
-    bedrockFpsHelperProc = hp;
+    bedrockFpsMonitorProc = proc;
 
-    let buf = '';
-    hp.stdout?.on('data', (d) => {
-      buf += String(d || '');
-      let i;
-      while ((i = buf.indexOf('\n')) >= 0) {
-        const line = buf.slice(0, i).trim();
-        buf = buf.slice(i + 1);
-        if (!line) continue;
-        let msg = null;
-        try { msg = JSON.parse(line); } catch (_) { continue; }
-        if (msg?.type === 'fps') {
-          const fps = Number(msg.current || 0);
-          if (fps > 0) {
-            bedrockFpsState.current = fps;
-            bedrockFpsState.min = bedrockFpsState.min ? Math.min(bedrockFpsState.min, fps) : fps;
-            bedrockFpsState.max = Math.max(bedrockFpsState.max || 0, fps);
-            bedrockFpsState.samples = (bedrockFpsState.samples || 0) + 1;
-            bedrockFpsState.lastUpdateTs = Date.now();
-            bedrockFpsState.debug = `helper samples=${bedrockFpsState.samples} src=${msg.source || 'n/a'}`;
-            emitBedrockFpsState();
-          }
-        } else if (msg?.type === 'debug') {
-          bedrockFpsState.debug = String(msg.message || '').slice(0, 180);
-          emitBedrockFpsState();
-        } else if (msg?.type === 'error') {
-          bedrockFpsState.error = String(msg.message || 'helper_error');
-          emitBedrockFpsState();
-        }
-      }
-    });
+    bedrockFpsState = {
+      ...bedrockFpsState,
+      enabled: true,
+      available: true,
+      backend: 'external',
+      error: '',
+      debug: path.basename(exePath),
+      lastUpdateTs: Date.now()
+    };
+    emitBedrockFpsState();
 
-    hp.stderr?.on('data', (d) => {
-      const s = String(d || '').trim();
-      if (!s) return;
-      bedrockFpsState.debug = `helper_stderr:${s.slice(0,120)}`;
-      emitBedrockFpsState();
-    });
-
-    hp.on('exit', () => {
-      bedrockFpsHelperProc = null;
+    proc.on('exit', () => {
+      bedrockFpsMonitorProc = null;
       if (!bedrockFpsState.enabled) return;
-      if ((bedrockFpsState.samples || 0) > 0) return;
-      bedrockFpsState.enabled = false;
-      bedrockFpsState.error = 'helper_exited_without_samples';
+      bedrockFpsState = {
+        ...bedrockFpsState,
+        enabled: false,
+        error: '',
+        debug: 'external_counter_exited',
+        lastUpdateTs: Date.now()
+      };
       emitBedrockFpsState();
     });
 
-    return { ok: true, backend: 'helper' };
+    return { ok: true, backend: 'external' };
   } catch (e) {
-    bedrockFpsState = { ...bedrockFpsState, enabled: false, error: String(e?.message || e) };
+    bedrockFpsState = {
+      ...bedrockFpsState,
+      enabled: false,
+      available: false,
+      backend: 'external',
+      error: String(e?.message || e),
+      debug: ''
+    };
     emitBedrockFpsState();
     return { ok: false, error: bedrockFpsState.error };
   }
@@ -4093,28 +4044,7 @@ ipcMain.handle('bedrock:fpsGet', async () => {
   return { ok: true, ...bedrockFpsState };
 });
 
-ipcMain.handle('bedrock:openFpsFallbackTools', async () => {
-  try {
-    let opened = false;
-    try { await shell.openExternal('ms-gamebar://home'); opened = true; } catch (_) {}
-    try {
-      const candidates = [
-        path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'NVIDIA Corporation', 'NVIDIA App', 'NVIDIA App.exe'),
-        path.join(process.env['ProgramFiles'] || 'C:\\Program Files', 'NVIDIA Corporation', 'NVIDIA GeForce Experience', 'NVIDIA GeForce Experience.exe')
-      ];
-      for (const p of candidates) {
-        if (fs.existsSync(p)) {
-          childProcess.execFile(p, [], { windowsHide: true }, () => {});
-          opened = true;
-          break;
-        }
-      }
-    } catch (_) {}
-    return opened ? { ok: true } : { ok: false, error: 'no_tools_found' };
-  } catch (e) {
-    return { ok: false, error: String(e?.message || e) };
-  }
-});
+// External fallback tools handler removed: NocFpsCounter.exe is now the only FPS backend.
 
 ipcMain.handle('bedrock:openSettings', async () => {
   try {
