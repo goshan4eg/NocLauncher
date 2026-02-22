@@ -4324,9 +4324,6 @@ ipcMain.handle('bedrock:launch', async () => {
     // Try to add server entry first (harmless if already present)
     await ensureBedrockServerLink();
 
-    // Force launch defaults for all users of this launcher profile
-    try { applyBedrockLaunchDefaults(); } catch (_) {}
-
     // Hide launcher immediately, then launch Bedrock
     hideLauncherForGame();
     await shell.openExternal('minecraft://');
