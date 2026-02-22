@@ -6,7 +6,6 @@
   let streamerMode = false;
   let collapsed = false;
   let miniMenuOpen = false;
-  const LIVE_FPS_KEYS = ['dev_debug_hud', 'gfx_showfps', 'show_fps', 'dev_show_fps', 'dev_showfps', 'fps_counter'];
 
   function paintCollapsed() {
     document.body.classList.toggle('collapsed', collapsed);
@@ -21,26 +20,30 @@
     try { await window.noc?.bedrockHubQuickMenuSetOpen?.(miniMenuOpen); } catch (_) {}
   }
 
-  async function readLiveFpsEnabled() {
-    try {
-      const r = await window.noc?.bedrockOptionsRead?.();
-      const items = Array.isArray(r?.items) ? r.items : [];
-      const map = new Map(items.map(it => [String(it.key || '').toLowerCase(), String(it.value ?? '').trim().toLowerCase()]));
-      for (const k of LIVE_FPS_KEYS) {
-        if (!map.has(k)) continue;
-        const v = map.get(k);
-        return (v === '1' || v === 'true');
-      }
-    } catch (_) {}
-    return false;
+  function paintMiniFpsState(f) {
+    const b = $('#btnMiniFps');
+    const st = $('#miniFpsStats');
+    const on = !!f?.enabled;
+    if (b) {
+      b.textContent = on ? 'ВКЛ' : 'ВЫКЛ';
+      b.classList.toggle('acc', on);
+    }
+    const cur = Number(f?.current || 0);
+    const min = Number(f?.min || 0);
+    const max = Number(f?.max || 0);
+    const backend = String(f?.backend || 'none');
+    const err = String(f?.error || '');
+    if (st) {
+      if (err && !on) st.textContent = `FPS: — • MIN: — • MAX: — • ${backend} • ${err}`;
+      else st.textContent = `FPS: ${cur || '—'} • MIN: ${min || '—'} • MAX: ${max || '—'} • ${backend}`;
+    }
   }
 
-  async function paintMiniFpsToggle() {
-    const b = $('#btnMiniFps');
-    if (!b) return;
-    const on = await readLiveFpsEnabled();
-    b.textContent = on ? 'ВКЛ' : 'ВЫКЛ';
-    b.classList.toggle('acc', on);
+  async function refreshMiniFpsState() {
+    try {
+      const f = await window.noc?.bedrockFpsGet?.();
+      paintMiniFpsState(f || {});
+    } catch (_) {}
   }
 
   async function setCollapsed(next) {
@@ -288,18 +291,19 @@
     $('#btnCollapse')?.addEventListener('click', () => setCollapsed(!collapsed));
     $('#btnExpand')?.addEventListener('click', () => { setMiniMenuOpen(false); setCollapsed(false); });
     $('#btnMiniSettings')?.addEventListener('click', async () => {
-      setMiniMenuOpen(!miniMenuOpen);
-      if (miniMenuOpen) await paintMiniFpsToggle();
+      await setMiniMenuOpen(!miniMenuOpen);
+      if (miniMenuOpen) await refreshMiniFpsState();
     });
     $('#btnMiniFps')?.addEventListener('click', async () => {
-      const on = await readLiveFpsEnabled();
-      const next = on ? '0' : '1';
-      for (const k of LIVE_FPS_KEYS) {
-        await window.noc?.bedrockOptionsSet?.(k, next);
+      const f = await window.noc?.bedrockFpsGet?.();
+      const on = !!f?.enabled;
+      const r = on ? (await window.noc?.bedrockFpsStop?.()) : (await window.noc?.bedrockFpsStart?.());
+      await refreshMiniFpsState();
+      if (!r?.ok) {
+        setInviteStatus(`FPS монитор: ошибка — ${r?.error || 'unknown'}`);
+      } else {
+        setInviteStatus(`FPS монитор: ${on ? 'выключен' : 'включён'} (реальные MIN/MAX из рендера игры)`);
       }
-      if (next === '1') await window.noc?.bedrockOptionsSet?.('gfx_hidehud', '0');
-      await paintMiniFpsToggle();
-      setInviteStatus(`FPS-счётчик: ${next === '1' ? 'включён' : 'выключен'} (если игра открыта — перезапусти Bedrock)`);
     });
     window.addEventListener('keydown', (e) => {
       if (e.key === 'F8') setCollapsed(!collapsed);
@@ -314,10 +318,15 @@
 
     $('#btnCloseWin')?.addEventListener('click', () => window.close());
 
+    window.noc?.onBedrockFps?.((d) => {
+      if (miniMenuOpen) paintMiniFpsState(d || {});
+    });
+
     setInterval(async () => {
       await checkBedrockStatus();
       await refresh();
       await refreshDiagnostics();
+      if (miniMenuOpen) await refreshMiniFpsState();
     }, 1200);
 
     await checkBedrockStatus();

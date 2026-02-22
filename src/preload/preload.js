@@ -71,6 +71,9 @@ modsList: () => ipcRenderer.invoke('mods:list'),
   bedrockHubOpen: () => ipcRenderer.invoke('bedrock:hubOpen'),
   bedrockHubSetCollapsed: (collapsed) => ipcRenderer.invoke('bedrock:hubSetCollapsed', { collapsed }),
   bedrockHubQuickMenuSetOpen: (open) => ipcRenderer.invoke('bedrock:hubQuickMenuSetOpen', { open }),
+  bedrockFpsStart: () => ipcRenderer.invoke('bedrock:fpsStart'),
+  bedrockFpsStop: () => ipcRenderer.invoke('bedrock:fpsStop'),
+  bedrockFpsGet: () => ipcRenderer.invoke('bedrock:fpsGet'),
   bedrockOpenSettings: () => ipcRenderer.invoke('bedrock:openSettings'),
   bedrockHostStatus: () => ipcRenderer.invoke('bedrock:hostStatus'),
   bedrockPathInfo: () => ipcRenderer.invoke('bedrock:pathInfo'),
@@ -167,6 +170,7 @@ modsList: () => ipcRenderer.invoke('mods:list'),
   onAuthError: (cb) => ipcRenderer.on('auth:error', (_e, d) => cb(d)),
   onVelorenProgress: (cb) => ipcRenderer.on('veloren:progress', (_e, d) => cb(d)),
   onUiOpenBedrockSettings: (cb) => ipcRenderer.on('ui:openBedrockSettings', () => cb()),
+  onBedrockFps: (cb) => ipcRenderer.on('bedrock:fps', (_e, d) => cb(d)),
   // Open built-in web catalog windows (single instance per key)
   webOpen: (payload) => ipcRenderer.invoke('web:open', payload)
 });

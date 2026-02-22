@@ -1025,6 +1025,201 @@ function isBedrockRunning() {
   return false;
 }
 
+let bedrockFpsMonitorProc = null;
+let bedrockFpsMonitorBuf = '';
+let bedrockFpsMonitorTimer = null;
+let bedrockFpsState = {
+  enabled: false,
+  backend: 'none',
+  available: false,
+  current: 0,
+  min: 0,
+  max: 0,
+  samples: 0,
+  lastUpdateTs: 0,
+  error: ''
+};
+
+function emitBedrockFpsState() {
+  const payload = { ...bedrockFpsState, ts: Date.now() };
+  try { if (win && !win.isDestroyed()) win.webContents.send('bedrock:fps', payload); } catch (_) {}
+  try { if (bedrockHubWin && !bedrockHubWin.isDestroyed()) bedrockHubWin.webContents.send('bedrock:fps', payload); } catch (_) {}
+}
+
+async function ensurePresentMonBinary() {
+  const toolsDir = path.join(APP_ROOT, 'tools', 'presentmon');
+  ensureDir(toolsDir);
+
+  const findExe = () => {
+    try {
+      const direct = fs.readdirSync(toolsDir).find(n => /presentmon.*\.exe$/i.test(String(n || '')));
+      if (direct) return path.join(toolsDir, direct);
+    } catch (_) {}
+    try {
+      const walk = (dir) => {
+        const ents = fs.readdirSync(dir, { withFileTypes: true });
+        for (const e of ents) {
+          const fp = path.join(dir, e.name);
+          if (e.isFile() && /presentmon.*\.exe$/i.test(e.name)) return fp;
+          if (e.isDirectory()) {
+            const r = walk(fp);
+            if (r) return r;
+          }
+        }
+        return null;
+      };
+      return walk(toolsDir);
+    } catch (_) { return null; }
+  };
+
+  const existing = findExe();
+  if (existing && fs.existsSync(existing)) return { ok: true, exe: existing, downloaded: false };
+
+  const urls = [
+    'https://github.com/GameTechDev/PresentMon/releases/download/v2.2.0/PresentMon-2.2.0-win-x64.zip',
+    'https://github.com/GameTechDev/PresentMon/releases/download/v2.1.0/PresentMon-2.1.0-win-x64.zip',
+    'https://github.com/GameTechDev/PresentMon/releases/download/v1.9.0/PresentMon-1.9.0-x64.zip'
+  ];
+
+  for (const url of urls) {
+    const zipPath = path.join(toolsDir, `presentmon-${Date.now()}.zip`);
+    try {
+      await new Promise((resolve, reject) => {
+        const h = url.startsWith('https://') ? https : http;
+        const req = h.get(url, (res) => {
+          if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+            try { res.resume(); } catch (_) {}
+            return reject(new Error(`redirect:${res.headers.location}`));
+          }
+          if ((res.statusCode || 0) >= 400) {
+            try { res.resume(); } catch (_) {}
+            return reject(new Error(`http_${res.statusCode}`));
+          }
+          const ws = fs.createWriteStream(zipPath);
+          res.pipe(ws);
+          ws.on('finish', () => { try { ws.close(() => resolve()); } catch (_) { resolve(); } });
+          ws.on('error', reject);
+        });
+        req.on('error', reject);
+      });
+      const z = new AdmZip(zipPath);
+      z.extractAllTo(toolsDir, true);
+      try { fs.unlinkSync(zipPath); } catch (_) {}
+      const exe = findExe();
+      if (exe && fs.existsSync(exe)) return { ok: true, exe, downloaded: true };
+    } catch (e) {
+      try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath); } catch (_) {}
+      const msg = String(e?.message || e);
+      if (msg.startsWith('redirect:')) {
+        const redirected = msg.slice('redirect:'.length).trim();
+        if (redirected) {
+          try {
+            await new Promise((resolve, reject) => {
+              const h2 = redirected.startsWith('https://') ? https : http;
+              const req2 = h2.get(redirected, (res2) => {
+                if ((res2.statusCode || 0) >= 400) { try { res2.resume(); } catch (_) {} return reject(new Error(`http_${res2.statusCode}`)); }
+                const ws2 = fs.createWriteStream(zipPath);
+                res2.pipe(ws2);
+                ws2.on('finish', () => { try { ws2.close(() => resolve()); } catch (_) { resolve(); } });
+                ws2.on('error', reject);
+              });
+              req2.on('error', reject);
+            });
+            const z2 = new AdmZip(zipPath);
+            z2.extractAllTo(toolsDir, true);
+            try { fs.unlinkSync(zipPath); } catch (_) {}
+            const exe2 = findExe();
+            if (exe2 && fs.existsSync(exe2)) return { ok: true, exe: exe2, downloaded: true };
+          } catch (_) {}
+        }
+      }
+    }
+  }
+
+  return { ok: false, error: 'presentmon_download_failed' };
+}
+
+function stopBedrockFpsMonitor() {
+  try { if (bedrockFpsMonitorTimer) clearTimeout(bedrockFpsMonitorTimer); } catch (_) {}
+  bedrockFpsMonitorTimer = null;
+  try { if (bedrockFpsMonitorProc && !bedrockFpsMonitorProc.killed) bedrockFpsMonitorProc.kill(); } catch (_) {}
+  bedrockFpsMonitorProc = null;
+  bedrockFpsMonitorBuf = '';
+  bedrockFpsState.enabled = false;
+  emitBedrockFpsState();
+  return { ok: true };
+}
+
+async function startBedrockFpsMonitor() {
+  if (process.platform !== 'win32') return { ok: false, error: 'windows_only' };
+  if (bedrockFpsMonitorProc && !bedrockFpsMonitorProc.killed) return { ok: true, already: true };
+
+  const pm = await ensurePresentMonBinary();
+  if (!pm?.ok) {
+    bedrockFpsState = { ...bedrockFpsState, enabled: false, available: false, backend: 'none', error: pm?.error || 'presentmon_unavailable' };
+    emitBedrockFpsState();
+    return { ok: false, error: bedrockFpsState.error };
+  }
+
+  bedrockFpsState = { enabled: true, backend: 'presentmon', available: true, current: 0, min: 0, max: 0, samples: 0, lastUpdateTs: 0, error: '' };
+  emitBedrockFpsState();
+
+  try {
+    const proc = childProcess.spawn(pm.exe, ['-process_name', 'Minecraft.Windows.exe', '-output_stdout'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    bedrockFpsMonitorProc = proc;
+    let header = null;
+    let msIdx = -1;
+
+    const onLine = (line) => {
+      const s = String(line || '').trim();
+      if (!s) return;
+      if (!header) {
+        header = s.split(',').map(x => String(x || '').trim().toLowerCase());
+        msIdx = header.findIndex(h => h === 'msbetweenpresents' || h === 'ms between presents');
+        return;
+      }
+      const parts = s.split(',');
+      if (msIdx < 0 || msIdx >= parts.length) return;
+      const ms = Number(parts[msIdx]);
+      if (!Number.isFinite(ms) || ms <= 0) return;
+      const fps = Math.max(1, Math.min(999, Math.round(1000 / ms)));
+      bedrockFpsState.current = fps;
+      bedrockFpsState.min = bedrockFpsState.min ? Math.min(bedrockFpsState.min, fps) : fps;
+      bedrockFpsState.max = Math.max(bedrockFpsState.max || 0, fps);
+      bedrockFpsState.samples = (bedrockFpsState.samples || 0) + 1;
+      bedrockFpsState.lastUpdateTs = Date.now();
+      emitBedrockFpsState();
+    };
+
+    proc.stdout?.on('data', (chunk) => {
+      bedrockFpsMonitorBuf += chunk.toString('utf8');
+      let i;
+      while ((i = bedrockFpsMonitorBuf.indexOf('\n')) >= 0) {
+        const line = bedrockFpsMonitorBuf.slice(0, i);
+        bedrockFpsMonitorBuf = bedrockFpsMonitorBuf.slice(i + 1);
+        onLine(line);
+      }
+    });
+
+    proc.stderr?.on('data', () => {});
+
+    proc.on('exit', () => {
+      bedrockFpsMonitorProc = null;
+      if (bedrockFpsState.enabled) {
+        bedrockFpsState.enabled = false;
+        bedrockFpsState.error = bedrockFpsState.error || 'presentmon_exited';
+        emitBedrockFpsState();
+      }
+    });
+
+    return { ok: true, backend: 'presentmon' };
+  } catch (e) {
+    bedrockFpsState = { ...bedrockFpsState, enabled: false, error: String(e?.message || e) };
+    emitBedrockFpsState();
+    return { ok: false, error: bedrockFpsState.error };
+  }
+}
+
 function hasRecentBedrockWorldActivity(maxAgeMs = 180000) {
   try {
     const p = bedrockPaths();
@@ -1243,6 +1438,10 @@ app.whenReady().then(async () => {
       createWindow();
     }
   });
+});
+
+app.on('before-quit', () => {
+  try { stopBedrockFpsMonitor(); } catch (_) {}
 });
 
 app.on('window-all-closed', function () {
@@ -3846,6 +4045,18 @@ ipcMain.handle('bedrock:hubQuickMenuSetOpen', async (_e, payload) => {
   return setBedrockHubQuickMenuOpen(!!payload?.open);
 });
 
+ipcMain.handle('bedrock:fpsStart', async () => {
+  return await startBedrockFpsMonitor();
+});
+
+ipcMain.handle('bedrock:fpsStop', async () => {
+  return stopBedrockFpsMonitor();
+});
+
+ipcMain.handle('bedrock:fpsGet', async () => {
+  return { ok: true, ...bedrockFpsState };
+});
+
 ipcMain.handle('bedrock:openSettings', async () => {
   try {
     if (win && !win.isDestroyed()) {
@@ -4563,6 +4774,7 @@ ipcMain.handle('bedrock:launch', async () => {
         const running = isBedrockRunning();
         if (running) {
           appendBedrockLaunchLog('INFO: Bedrock process detected');
+          try { await startBedrockFpsMonitor(); } catch (_) {}
           sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
         } else {
           appendBedrockLaunchLog('ERROR: Bedrock process not detected after 4s');
