@@ -480,25 +480,63 @@
             <button class="iconBtn" id="btnCloseBedrockVirus" type="button" aria-label="Закрыть">✕</button>
           </div>
           <div class="form">
-            <div class="help">Выбери сервис — откроется встроенное окно сайта, где можно загрузить файл и проверить его на угрозы.</div>
+            <div class="help">Откроется встроенное окно выбранного сервиса. Сначала — лучшие проверяльщики файлов, ниже — дополнительные сервисы репутации/песочницы.</div>
 
-            <div class="formRow"><div class="lbl">Лучшие</div></div>
+            <div class="formRow"><div class="lbl">Лучшие (файлы)</div></div>
             <div class="hrow" style="gap:8px; flex-wrap:wrap;">
               <button class="btn mini" data-virus-url="https://www.virustotal.com/gui/home/upload">VirusTotal</button>
+              <button class="btn mini" data-virus-url="https://metadefender.opswat.com/">MetaDefender Cloud</button>
               <button class="btn mini" data-virus-url="https://opentip.kaspersky.com/">Kaspersky OpenTIP</button>
-              <button class="btn mini" data-virus-url="https://www.metadefender.com/#!/scan-file">MetaDefender Cloud</button>
+              <button class="btn mini" data-virus-url="https://virusdesk.kaspersky.com/">Kaspersky VirusDesk</button>
+              <button class="btn mini" data-virus-url="https://online.drweb.com/">Dr.Web Online</button>
+              <button class="btn mini" data-virus-url="https://virusscan.jotti.org/">Jotti</button>
             </div>
 
-            <div class="formRow" style="margin-top:10px;"><div class="lbl">Средние</div></div>
+            <div class="formRow" style="margin-top:10px;"><div class="lbl">Средние (файлы)</div></div>
             <div class="hrow" style="gap:8px; flex-wrap:wrap;">
-              <button class="btn mini ghost" data-virus-url="https://www.fortiguard.com/virusscanner">FortiGuard Scanner</button>
+              <button class="btn mini ghost" data-virus-url="https://www.fortiguard.com/virusscanner">FortiGuard</button>
               <button class="btn mini ghost" data-virus-url="https://avcheck.net/">AVCheck</button>
+              <button class="btn mini ghost" data-virus-url="https://www.virscan.org/">VirSCAN</button>
+              <button class="btn mini ghost" data-virus-url="https://www.eset.com/int/home/online-scanner/">ESET Online Scanner</button>
+              <button class="btn mini ghost" data-virus-url="https://www.trendmicro.com/en_us/forHome/products/housecall.html">Trend Micro HouseCall</button>
+              <button class="btn mini ghost" data-virus-url="https://valkyrie.comodo.com/">Comodo Valkyrie</button>
+              <button class="btn mini ghost" data-virus-url="https://gridinsoft.com/online-virus-scanner">Gridinsoft Scanner</button>
+              <button class="btn mini ghost" data-virus-url="https://www.checkfile.ru/">CheckFile (RU)</button>
             </div>
 
-            <div class="formRow" style="margin-top:10px;"><div class="lbl">Обычные</div></div>
+            <div class="formRow" style="margin-top:10px;"><div class="lbl">Песочницы / анализ</div></div>
             <div class="hrow" style="gap:8px; flex-wrap:wrap;">
-              <button class="btn mini ghost" data-virus-url="https://www.jotti.org/">Jotti Malware Scan</button>
-              <button class="btn mini ghost" data-virus-url="https://www.virscan.org/">VirSCAN</button>
+              <button class="btn mini ghost" data-virus-url="https://any.run/">ANY.RUN</button>
+              <button class="btn mini ghost" data-virus-url="https://www.hybrid-analysis.com/">Hybrid Analysis</button>
+              <button class="btn mini ghost" data-virus-url="https://www.joesandbox.com/">Joe Sandbox</button>
+              <button class="btn mini ghost" data-virus-url="https://analyze.intezer.com/">Intezer Analyze</button>
+              <button class="btn mini ghost" data-virus-url="https://sandbox.threatbook.com/">ThreatBook Sandbox</button>
+              <button class="btn mini ghost" data-virus-url="https://www.unpac.me/">UnpacMe</button>
+              <button class="btn mini ghost" data-virus-url="https://www.vmray.com/">VMRay</button>
+              <button class="btn mini ghost" data-virus-url="https://www.capesandbox.com/">CAPE Sandbox</button>
+              <button class="btn mini ghost" data-virus-url="https://www.reversinglabs.com/products/spectra-analyze">ReversingLabs</button>
+            </div>
+
+            <div class="formRow" style="margin-top:10px;"><div class="lbl">Дополнительно: URL/IP/IOC репутация</div></div>
+            <div class="hrow" style="gap:8px; flex-wrap:wrap;">
+              <button class="btn mini ghost" data-virus-url="https://exchange.xforce.ibmcloud.com/">IBM X-Force</button>
+              <button class="btn mini ghost" data-virus-url="https://talosintelligence.com/">Cisco Talos</button>
+              <button class="btn mini ghost" data-virus-url="https://urlscan.io/">URLScan</button>
+              <button class="btn mini ghost" data-virus-url="https://sitecheck.sucuri.net/">Sucuri SiteCheck</button>
+              <button class="btn mini ghost" data-virus-url="https://quttera.com/website-malware-scanner">Quttera</button>
+              <button class="btn mini ghost" data-virus-url="https://www.criminalip.io/">Criminal IP</button>
+              <button class="btn mini ghost" data-virus-url="https://otx.alienvault.com/">AlienVault OTX</button>
+              <button class="btn mini ghost" data-virus-url="https://pulsedive.com/">Pulsedive</button>
+              <button class="btn mini ghost" data-virus-url="https://bazaar.abuse.ch/">MalwareBazaar</button>
+              <button class="btn mini ghost" data-virus-url="https://urlhaus.abuse.ch/">URLHaus</button>
+              <button class="btn mini ghost" data-virus-url="https://threatfox.abuse.ch/">ThreatFox</button>
+              <button class="btn mini ghost" data-virus-url="https://viz.greynoise.io/">GreyNoise</button>
+              <button class="btn mini ghost" data-virus-url="https://phishtank.org/">PhishTank</button>
+              <button class="btn mini ghost" data-virus-url="https://www.spamhaus.org/">Spamhaus</button>
+              <button class="btn mini ghost" data-virus-url="https://safeweb.norton.com/">Norton Safe Web</button>
+              <button class="btn mini ghost" data-virus-url="https://www.urlvoid.com/">URLVoid</button>
+              <button class="btn mini ghost" data-virus-url="https://www.ipqualityscore.com/">IPQualityScore</button>
+              <button class="btn mini ghost" data-virus-url="https://www.abuseipdb.com/">AbuseIPDB</button>
             </div>
           </div>
         </div>
