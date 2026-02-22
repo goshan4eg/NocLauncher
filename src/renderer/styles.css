@@ -689,11 +689,15 @@ textarea.ta{
 .heroOverlays > *{ pointer-events: auto; }
 
 .bedrockBox{
-  width: min(540px, calc(100% - 36px));
+  width: min(860px, calc(100% - 36px));
   padding: 12px 12px 10px;
   border-radius: 14px;
-  background: rgba(0,0,0,.34);
-  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(0,0,0,.46);
+  border: 1px solid rgba(255,255,255,.14);
+}
+.bedrockBox .hrow{
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .bedrockTitle{ font-weight: 1000; margin-bottom: 6px; }
 .bedrockState{ color: rgba(255,255,255,.78); font-size: 12px; margin-bottom: 10px; }
