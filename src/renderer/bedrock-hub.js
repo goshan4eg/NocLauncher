@@ -161,6 +161,15 @@
     await setCollapsed(collapsed);
 
     $('#btnRefresh')?.addEventListener('click', async () => { await refresh(); await refreshDiagnostics(); });
+    $('#btnAddCreatorFriend')?.addEventListener('click', async () => {
+      const url = 'https://account.xbox.com/Profile?gamertag=GoshGame5696';
+      try {
+        await window.noc.shellOpenExternal(url);
+        setInviteStatus('Открываю профиль Xbox: GoshGame5696');
+      } catch (_) {
+        setInviteStatus('Не удалось открыть профиль Xbox.');
+      }
+    });
     $('#btnOpenWorld')?.addEventListener('click', async () => {
       await window.noc.bedrockLaunch();
       setTimeout(checkBedrockStatus, 1200);
