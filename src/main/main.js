@@ -565,6 +565,7 @@ let catalogWinCurseforge = null;
 
 let splashWin = null;
 let bedrockHubWin = null;
+let bedrockFpsOverlayWin = null;
 const BEDROCK_HUB_EXPANDED = { width: 760, height: 480, minWidth: 680, minHeight: 420 };
 const BEDROCK_HUB_COLLAPSED = { width: 220, height: 56, minWidth: 220, minHeight: 56 };
 const BEDROCK_HUB_COLLAPSED_MENU = { width: 220, height: 132, minWidth: 220, minHeight: 56 };
@@ -990,6 +991,49 @@ function closeBedrockHubWindow() {
   } catch (_) {}
 }
 
+function openBedrockFpsOverlayWindow() {
+  try {
+    if (bedrockFpsOverlayWin && !bedrockFpsOverlayWin.isDestroyed()) {
+      bedrockFpsOverlayWin.showInactive();
+      return;
+    }
+    bedrockFpsOverlayWin = new BrowserWindow({
+      width: 360,
+      height: 54,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      focusable: false,
+      hasShadow: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        preload: PRELOAD_PATH
+      }
+    });
+    try {
+      bedrockFpsOverlayWin.setAlwaysOnTop(true, 'screen-saver');
+      bedrockFpsOverlayWin.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+      bedrockFpsOverlayWin.setIgnoreMouseEvents(true, { forward: true });
+      const area = screen.getPrimaryDisplay().workArea;
+      bedrockFpsOverlayWin.setPosition(area.x + 12, area.y + 12);
+    } catch (_) {}
+    bedrockFpsOverlayWin.on('closed', () => { bedrockFpsOverlayWin = null; });
+    bedrockFpsOverlayWin.loadFile(path.join(RENDERER_DIR, 'bedrock-fps-overlay.html'));
+  } catch (_) {}
+}
+
+function closeBedrockFpsOverlayWindow() {
+  try {
+    if (bedrockFpsOverlayWin && !bedrockFpsOverlayWin.isDestroyed()) {
+      bedrockFpsOverlayWin.close();
+      bedrockFpsOverlayWin = null;
+    }
+  } catch (_) {}
+}
+
 function hideLauncherForGame() {
   try {
     if (win && !win.isDestroyed()) win.hide();
@@ -1045,6 +1089,7 @@ function emitBedrockFpsState() {
   const payload = { ...bedrockFpsState, ts: Date.now() };
   try { if (win && !win.isDestroyed()) win.webContents.send('bedrock:fps', payload); } catch (_) {}
   try { if (bedrockHubWin && !bedrockHubWin.isDestroyed()) bedrockHubWin.webContents.send('bedrock:fps', payload); } catch (_) {}
+  try { if (bedrockFpsOverlayWin && !bedrockFpsOverlayWin.isDestroyed()) bedrockFpsOverlayWin.webContents.send('bedrock:fps', payload); } catch (_) {}
 }
 
 async function ensurePresentMonBinary() {
@@ -1089,6 +1134,7 @@ function stopBedrockFpsMonitor() {
   bedrockFpsCsvPath = '';
   bedrockFpsState.enabled = false;
   emitBedrockFpsState();
+  closeBedrockFpsOverlayWindow();
   return { ok: true };
 }
 
@@ -1105,6 +1151,7 @@ async function startBedrockFpsMonitor() {
 
   bedrockFpsState = { enabled: true, backend: 'presentmon', available: true, current: 0, min: 0, max: 0, samples: 0, lastUpdateTs: 0, error: '' };
   emitBedrockFpsState();
+  openBedrockFpsOverlayWindow();
 
   try {
     const base = ['--session_name', 'NocFPS', '--stop_existing_session', '--restart_as_admin'];
@@ -1204,6 +1251,7 @@ async function startBedrockFpsMonitor() {
           bedrockFpsState.error = rawErr;
         }
         emitBedrockFpsState();
+        closeBedrockFpsOverlayWindow();
       }
     });
 
@@ -1211,6 +1259,7 @@ async function startBedrockFpsMonitor() {
   } catch (e) {
     bedrockFpsState = { ...bedrockFpsState, enabled: false, error: String(e?.message || e) };
     emitBedrockFpsState();
+    closeBedrockFpsOverlayWindow();
     return { ok: false, error: bedrockFpsState.error };
   }
 }
@@ -1278,6 +1327,7 @@ function watchBedrockAndRestore() {
       if (seenRunning && !running) {
         clearInterval(timer);
         closeBedrockHubWindow();
+        stopBedrockFpsMonitor();
         restoreLauncherAfterGame();
         return;
       }
@@ -1286,6 +1336,7 @@ function watchBedrockAndRestore() {
       if (!seenRunning && elapsed > maxWaitToAppearMs) {
         clearInterval(timer);
         closeBedrockHubWindow();
+        stopBedrockFpsMonitor();
         restoreLauncherAfterGame();
         return;
       }
@@ -1293,11 +1344,13 @@ function watchBedrockAndRestore() {
       if (elapsed > hardStopMs) {
         clearInterval(timer);
         closeBedrockHubWindow();
+        stopBedrockFpsMonitor();
         restoreLauncherAfterGame();
       }
     } catch (_) {
       clearInterval(timer);
       closeBedrockHubWindow();
+      stopBedrockFpsMonitor();
       restoreLauncherAfterGame();
     }
   }, 2000);
