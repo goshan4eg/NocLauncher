@@ -4151,16 +4151,35 @@ function getBedrockComMojangDir() {
   return discoverBedrockComMojangDir();
 }
 
+function getBedrockSharedComMojangDir() {
+  try {
+    const roaming = process.env.APPDATA;
+    if (!roaming) return null;
+    const shared = path.join(roaming, 'Minecraft Bedrock', 'Users', 'Shared', 'games', 'com.mojang');
+    if (fs.existsSync(shared)) return shared;
+  } catch (_) {}
+  return null;
+}
+
 function bedrockPaths() {
   const com = getBedrockComMojangDir();
   if (!com) return null;
   const mcpe = path.join(com, 'minecraftpe');
+
+  // Some installs store packs in Users/Shared while worlds live in Users/<id>.
+  const sharedCom = getBedrockSharedComMojangDir();
+  const sharedResourcePacks = sharedCom ? path.join(sharedCom, 'resource_packs') : '';
+  const sharedBehaviorPacks = sharedCom ? path.join(sharedCom, 'behavior_packs') : '';
+  const resourcePacks = (sharedResourcePacks && fs.existsSync(sharedResourcePacks)) ? sharedResourcePacks : path.join(com, 'resource_packs');
+  const behaviorPacks = (sharedBehaviorPacks && fs.existsSync(sharedBehaviorPacks)) ? sharedBehaviorPacks : path.join(com, 'behavior_packs');
+
   return {
     comMojang: com,
+    sharedComMojang: sharedCom || null,
     minecraftpe: mcpe,
     optionsTxt: path.join(mcpe, 'options.txt'),
-    resourcePacks: path.join(com, 'resource_packs'),
-    behaviorPacks: path.join(com, 'behavior_packs'),
+    resourcePacks,
+    behaviorPacks,
     worlds: path.join(com, 'minecraftWorlds'),
     skins: path.join(com, 'skins')
   };
