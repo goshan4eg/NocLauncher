@@ -1072,67 +1072,72 @@ async function ensurePresentMonBinary() {
     } catch (_) { return null; }
   };
 
+  const downloadToFile = async (url, outPath, depth = 0) => {
+    if (!url || depth > 4) throw new Error('redirect_loop');
+    await new Promise((resolve, reject) => {
+      const h = url.startsWith('https://') ? https : http;
+      const req = h.get(url, { headers: { 'User-Agent': 'NocLauncher/1.0' } }, (res) => {
+        if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
+          try { res.resume(); } catch (_) {}
+          return downloadToFile(res.headers.location, outPath, depth + 1).then(resolve).catch(reject);
+        }
+        if ((res.statusCode || 0) >= 400) {
+          try { res.resume(); } catch (_) {}
+          return reject(new Error(`http_${res.statusCode}`));
+        }
+        const ws = fs.createWriteStream(outPath);
+        res.pipe(ws);
+        ws.on('finish', () => { try { ws.close(() => resolve()); } catch (_) { resolve(); } });
+        ws.on('error', reject);
+      });
+      req.on('error', reject);
+    });
+  };
+
   const existing = findExe();
   if (existing && fs.existsSync(existing)) return { ok: true, exe: existing, downloaded: false };
 
-  const urls = [
-    'https://github.com/GameTechDev/PresentMon/releases/download/v2.2.0/PresentMon-2.2.0-win-x64.zip',
-    'https://github.com/GameTechDev/PresentMon/releases/download/v2.1.0/PresentMon-2.1.0-win-x64.zip',
-    'https://github.com/GameTechDev/PresentMon/releases/download/v1.9.0/PresentMon-1.9.0-x64.zip'
-  ];
+  let assetUrls = [];
+  try {
+    const rel = await new Promise((resolve, reject) => {
+      https.get('https://api.github.com/repos/GameTechDev/PresentMon/releases/latest', { headers: { 'User-Agent': 'NocLauncher/1.0' } }, (res) => {
+        if ((res.statusCode || 0) >= 400) { try { res.resume(); } catch (_) {} return reject(new Error(`http_${res.statusCode}`)); }
+        let buf = '';
+        res.on('data', (d) => { buf += d.toString('utf8'); });
+        res.on('end', () => resolve(buf));
+      }).on('error', reject);
+    });
+    const j = JSON.parse(String(rel || '{}'));
+    assetUrls = (Array.isArray(j?.assets) ? j.assets : [])
+      .map(a => String(a?.browser_download_url || ''))
+      .filter(u => /presentmon/i.test(u) && /(win|windows|x64)/i.test(u) && /\.(zip|exe)$/i.test(u));
+  } catch (_) {}
 
-  for (const url of urls) {
-    const zipPath = path.join(toolsDir, `presentmon-${Date.now()}.zip`);
+  if (!assetUrls.length) {
+    assetUrls = [
+      'https://github.com/GameTechDev/PresentMon/releases/latest/download/PresentMon-2.2.0-win-x64.zip',
+      'https://github.com/GameTechDev/PresentMon/releases/latest/download/PresentMon-2.1.0-win-x64.zip',
+      'https://github.com/GameTechDev/PresentMon/releases/latest/download/PresentMon-1.9.0-x64.zip'
+    ];
+  }
+
+  for (const url of assetUrls) {
+    const ext = /\.exe$/i.test(url) ? 'exe' : 'zip';
+    const dlPath = path.join(toolsDir, `presentmon-${Date.now()}.${ext}`);
     try {
-      await new Promise((resolve, reject) => {
-        const h = url.startsWith('https://') ? https : http;
-        const req = h.get(url, (res) => {
-          if ([301, 302, 303, 307, 308].includes(res.statusCode) && res.headers.location) {
-            try { res.resume(); } catch (_) {}
-            return reject(new Error(`redirect:${res.headers.location}`));
-          }
-          if ((res.statusCode || 0) >= 400) {
-            try { res.resume(); } catch (_) {}
-            return reject(new Error(`http_${res.statusCode}`));
-          }
-          const ws = fs.createWriteStream(zipPath);
-          res.pipe(ws);
-          ws.on('finish', () => { try { ws.close(() => resolve()); } catch (_) { resolve(); } });
-          ws.on('error', reject);
-        });
-        req.on('error', reject);
-      });
-      const z = new AdmZip(zipPath);
-      z.extractAllTo(toolsDir, true);
-      try { fs.unlinkSync(zipPath); } catch (_) {}
+      await downloadToFile(url, dlPath);
+      if (ext === 'exe') {
+        const targetExe = path.join(toolsDir, 'PresentMon.exe');
+        try { fs.copyFileSync(dlPath, targetExe); } catch (_) {}
+      } else {
+        const z = new AdmZip(dlPath);
+        z.extractAllTo(toolsDir, true);
+      }
+      try { fs.unlinkSync(dlPath); } catch (_) {}
       const exe = findExe();
       if (exe && fs.existsSync(exe)) return { ok: true, exe, downloaded: true };
-    } catch (e) {
-      try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath); } catch (_) {}
-      const msg = String(e?.message || e);
-      if (msg.startsWith('redirect:')) {
-        const redirected = msg.slice('redirect:'.length).trim();
-        if (redirected) {
-          try {
-            await new Promise((resolve, reject) => {
-              const h2 = redirected.startsWith('https://') ? https : http;
-              const req2 = h2.get(redirected, (res2) => {
-                if ((res2.statusCode || 0) >= 400) { try { res2.resume(); } catch (_) {} return reject(new Error(`http_${res2.statusCode}`)); }
-                const ws2 = fs.createWriteStream(zipPath);
-                res2.pipe(ws2);
-                ws2.on('finish', () => { try { ws2.close(() => resolve()); } catch (_) { resolve(); } });
-                ws2.on('error', reject);
-              });
-              req2.on('error', reject);
-            });
-            const z2 = new AdmZip(zipPath);
-            z2.extractAllTo(toolsDir, true);
-            try { fs.unlinkSync(zipPath); } catch (_) {}
-            const exe2 = findExe();
-            if (exe2 && fs.existsSync(exe2)) return { ok: true, exe: exe2, downloaded: true };
-          } catch (_) {}
-        }
-      }
+    } catch (_) {
+      try { if (fs.existsSync(dlPath)) fs.unlinkSync(dlPath); } catch (_) {}
     }
   }
 
@@ -1165,7 +1170,25 @@ async function startBedrockFpsMonitor() {
   emitBedrockFpsState();
 
   try {
-    const proc = childProcess.spawn(pm.exe, ['-process_name', 'Minecraft.Windows.exe', '-output_stdout'], { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+    const argVariants = [
+      ['--process_name', 'Minecraft.Windows.exe', '--output_stdout'],
+      ['--process_name', 'MinecraftWindowsBeta.exe', '--output_stdout'],
+      ['-process_name', 'Minecraft.Windows.exe', '-output_stdout'],
+      ['-process_name', 'MinecraftWindowsBeta.exe', '-output_stdout']
+    ];
+
+    let proc = null;
+    let lastErr = '';
+    for (const args of argVariants) {
+      try {
+        proc = childProcess.spawn(pm.exe, args, { windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
+        if (proc?.pid) { lastErr = ''; break; }
+      } catch (e) {
+        lastErr = String(e?.message || e);
+      }
+    }
+    if (!proc) throw new Error(lastErr || 'presentmon_spawn_failed');
+
     bedrockFpsMonitorProc = proc;
     let header = null;
     let msIdx = -1;
@@ -1201,13 +1224,18 @@ async function startBedrockFpsMonitor() {
       }
     });
 
-    proc.stderr?.on('data', () => {});
+    let stderrText = '';
+    proc.stderr?.on('data', (d) => {
+      const s = String(d || '').trim();
+      if (!s) return;
+      stderrText = `${stderrText}\n${s}`.slice(-1200);
+    });
 
     proc.on('exit', () => {
       bedrockFpsMonitorProc = null;
       if (bedrockFpsState.enabled) {
         bedrockFpsState.enabled = false;
-        bedrockFpsState.error = bedrockFpsState.error || 'presentmon_exited';
+        bedrockFpsState.error = (stderrText || '').trim() || bedrockFpsState.error || 'presentmon_exited';
         emitBedrockFpsState();
       }
     });
