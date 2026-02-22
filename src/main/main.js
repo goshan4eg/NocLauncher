@@ -1105,7 +1105,7 @@ async function startBedrockFpsMonitor() {
   emitBedrockFpsState();
 
   try {
-    const base = ['--session_name', 'NocFPS', '--stop_existing_session'];
+    const base = ['--session_name', 'NocFPS', '--stop_existing_session', '--restart_as_admin'];
     const argVariants = [
       [...base, '--output_stdout'],
       [...base, '-output_stdout'],
