@@ -4318,6 +4318,69 @@ ipcMain.handle('bedrock:openStore', async () => {
   }
 });
 
+ipcMain.handle('bedrock:microsoftDiag', async () => {
+  if (process.platform !== 'win32') return { ok: false, error: 'windows_only' };
+  const hasPkg = async (name) => {
+    try {
+      const out = await runPowerShellAsync(`(Get-AppxPackage -Name ${name} | Select-Object -First 1 Name).Name`);
+      return !!String(out || '').trim();
+    } catch (_) { return false; }
+  };
+  const serviceOk = async (name) => {
+    try {
+      const out = await runPowerShellAsync(`(Get-Service -Name '${name}' -ErrorAction SilentlyContinue).Status`);
+      const s = String(out || '').trim().toLowerCase();
+      return s === 'running' || s === 'startpending';
+    } catch (_) { return false; }
+  };
+
+  try {
+    return {
+      ok: true,
+      minecraftInstalled: await hasPkg('Microsoft.MinecraftUWP'),
+      gamingServicesInstalled: await hasPkg('Microsoft.GamingServices'),
+      xboxIdentityInstalled: await hasPkg('Microsoft.XboxIdentityProvider'),
+      storeServiceOk: await serviceOk('ClipSVC'),
+      wuServiceOk: await serviceOk('wuauserv'),
+      bitsServiceOk: await serviceOk('BITS')
+    };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('bedrock:microsoftQuickFix', async () => {
+  if (process.platform !== 'win32') return { ok: false, error: 'windows_only' };
+  const steps = [];
+  const mark = (name, ok, error = '') => steps.push({ name, ok: !!ok, error: error ? String(error) : '' });
+
+  try {
+    try {
+      await execFileAsync('cmd', ['/c', 'start', '', '/b', 'wsreset.exe'], { windowsHide: true });
+      mark('wsreset', true);
+    } catch (e) { mark('wsreset', false, e?.message || e); }
+
+    try {
+      await runPowerShellAsync("Start-Service -Name BITS -ErrorAction SilentlyContinue; Start-Service -Name wuauserv -ErrorAction SilentlyContinue; Start-Service -Name ClipSVC -ErrorAction SilentlyContinue; 'ok'");
+      mark('start_core_services', true);
+    } catch (e) { mark('start_core_services', false, e?.message || e); }
+
+    try {
+      await runPowerShellAsync("$ErrorActionPreference='SilentlyContinue'; Get-AppxPackage -Name Microsoft.GamingServices | Remove-AppxPackage; Start-Sleep -Seconds 1; Start-Process 'ms-windows-store://pdp/?productid=9MWPM2CQNLHN'; 'ok'");
+      mark('reinstall_gaming_services', true);
+    } catch (e) { mark('reinstall_gaming_services', false, e?.message || e); }
+
+    try {
+      await shell.openExternal('ms-windows-store://pdp/?PFN=Microsoft.MinecraftUWP_8wekyb3d8bbwe');
+      mark('open_minecraft_store', true);
+    } catch (e) { mark('open_minecraft_store', false, e?.message || e); }
+
+    return { ok: true, steps };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e), steps };
+  }
+});
+
 ipcMain.handle('bedrock:managerStatus', async () => {
   if (process.platform !== 'win32') return { supported: false, installed: false };
   const p = getMcDownloaderPaths();

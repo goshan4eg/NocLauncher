@@ -2551,6 +2551,33 @@ function wireUI() {
       try { await window.noc?.shellOpenExternal?.(url); } catch (_) {}
     }
   });
+  $('#btnBedrockMsFix')?.addEventListener('click', async () => {
+    setStatus('MS Fix: проверяю Microsoft/Xbox компоненты...');
+    const d = await window.noc?.bedrockMicrosoftDiag?.();
+    if (!d?.ok) {
+      setStatus(`MS Fix: диагностика не удалась — ${d?.error || 'unknown'}`);
+      return;
+    }
+
+    const missing = [];
+    if (!d.minecraftInstalled) missing.push('Minecraft for Windows');
+    if (!d.gamingServicesInstalled) missing.push('Gaming Services');
+    if (!d.xboxIdentityInstalled) missing.push('Xbox Identity Provider');
+    if (!d.storeServiceOk) missing.push('ClipSVC');
+    if (!d.wuServiceOk) missing.push('Windows Update (wuauserv)');
+    if (!d.bitsServiceOk) missing.push('BITS');
+
+    setStatus(missing.length
+      ? `MS Fix: найдены проблемы (${missing.join(', ')}). Применяю быстрый фикс...`
+      : 'MS Fix: критичных проблем не найдено, запускаю мягкий фикс кэша/служб...');
+
+    const f = await window.noc?.bedrockMicrosoftQuickFix?.();
+    if (f?.ok) {
+      setStatus('MS Fix: готово. Перезапусти ПК и попробуй запустить Bedrock снова.');
+    } else {
+      setStatus(`MS Fix: частично выполнено — ${f?.error || 'unknown'}`);
+    }
+  });
   // Bedrock settings (graphics/options)
   const openBedrockSettings = async () => {
     await renderBedrockOptions();
