@@ -4766,30 +4766,27 @@ function resolveBedrockTreatmentsFile() {
   if (!p) return null;
   ensureDir(p.minecraftpe);
 
-  // 1) Priority: global/legacy treatments root (your real Bedrock path)
-  try {
-    const roots = [];
-    // a) Global roaming root: %APPDATA%/Minecraft Bedrock/treatments
+  const collectTreatmentCandidates = (root) => {
+    const out = [];
     try {
-      const roaming = process.env.APPDATA;
-      if (roaming) roots.push(path.join(roaming, 'Minecraft Bedrock', 'treatments'));
-    } catch (_) {}
-    // b) Under current com.mojang root (some installs)
-    roots.push(path.join(path.dirname(p.minecraftpe), 'treatments'));
-
-    const candidates = [];
-    for (const treatmentsRoot of roots) {
-      if (!treatmentsRoot || !fs.existsSync(treatmentsRoot)) continue;
-      const packs = fs.readdirSync(treatmentsRoot, { withFileTypes: true })
+      if (!root || !fs.existsSync(root)) return out;
+      const packs = fs.readdirSync(root, { withFileTypes: true })
         .filter(d => d.isDirectory())
         .map(d => d.name)
         .filter(n => /^treatment_packs/i.test(n));
       for (const pack of packs) {
-        const fp = path.join(treatmentsRoot, pack, 'treatment_tags.json');
-        if (fs.existsSync(fp)) candidates.push(fp);
+        const fp = path.join(root, pack, 'treatment_tags.json');
+        if (fs.existsSync(fp)) out.push(fp);
       }
-    }
+    } catch (_) {}
+    return out;
+  };
 
+  // 1) HARD priority: global roaming treatments root (%APPDATA%/Minecraft Bedrock/treatments)
+  try {
+    const roaming = process.env.APPDATA;
+    const root = roaming ? path.join(roaming, 'Minecraft Bedrock', 'treatments') : '';
+    const candidates = collectTreatmentCandidates(root);
     if (candidates.length) {
       candidates.sort((a, b) => {
         try { return (fs.statSync(b).mtimeMs || 0) - (fs.statSync(a).mtimeMs || 0); } catch (_) { return 0; }
@@ -4798,7 +4795,19 @@ function resolveBedrockTreatmentsFile() {
     }
   } catch (_) {}
 
-  // 2) Newer Bedrock format inside minecraftpe (ignore our synthetic file if real exists)
+  // 2) Secondary: under detected com.mojang root (some installs)
+  try {
+    const localRoot = path.join(path.dirname(p.minecraftpe), 'treatments');
+    const candidates = collectTreatmentCandidates(localRoot);
+    if (candidates.length) {
+      candidates.sort((a, b) => {
+        try { return (fs.statSync(b).mtimeMs || 0) - (fs.statSync(a).mtimeMs || 0); } catch (_) { return 0; }
+      });
+      return candidates[0];
+    }
+  } catch (_) {}
+
+  // 3) Newer Bedrock format inside minecraftpe (ignore synthetic file)
   try {
     const files = fs.readdirSync(p.minecraftpe)
       .filter(n => /^treatment_tags---.*\.json$/i.test(String(n || '')))
