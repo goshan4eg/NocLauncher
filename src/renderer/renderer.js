@@ -3076,8 +3076,10 @@ $('#btnExportInstance')?.addEventListener('click', async () => {
 $('#btnImportDot')?.addEventListener('click', async () => {
   try {
     setStatus('Импорт из .minecraft...');
-    await window.noc.instanceImportDotMinecraft();
-    setStatus('Импорт завершён');
+    const r = await window.noc.instanceImportDotMinecraft();
+    if (r?.ok) setStatus('Импорт завершён');
+    else if (r?.error && r.error !== 'cancel') setStatus(`Импорт: ${r.error}`);
+    else setStatus('Импорт отменён');
   } catch (e) { setStatus(`Импорт: ${e?.message || e}`); }
 });
 

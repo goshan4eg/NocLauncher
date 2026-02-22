@@ -2886,9 +2886,18 @@ async function exportInstanceZip(settings, gameDir) {
   return { ok: true, path: outPath };
 }
 
-async function importFromMinecraftDot(settings, gameDir) {
-  const src = path.join(process.env.APPDATA || '', '.minecraft');
-  if (!src || !fs.existsSync(src)) throw new Error('.minecraft not found');
+async function importFromMinecraftDot(settings, gameDir, sourceDir = '') {
+  let src = String(sourceDir || '').trim();
+  if (!src) src = path.join(process.env.APPDATA || '', '.minecraft');
+  if (!src || !fs.existsSync(src)) {
+    const owner = BrowserWindow.getAllWindows()[0] || null;
+    const pick = await dialog.showOpenDialog(owner, {
+      title: 'Выбери папку .minecraft для импорта',
+      properties: ['openDirectory']
+    });
+    if (pick.canceled || !pick.filePaths?.[0]) return { ok: false, error: 'cancel' };
+    src = pick.filePaths[0];
+  }
   const copyDir = (a,b) => {
     if (!fs.existsSync(a)) return;
     ensureDir(b);
@@ -3276,10 +3285,14 @@ ipcMain.handle('instance:exportZip', async () => {
   return await exportInstanceZip(settings, gameDir);
 });
 
-ipcMain.handle('instance:importDotMinecraft', async () => {
+ipcMain.handle('instance:importDotMinecraft', async (_e, payload) => {
   const settings = store.store;
   const gameDir = resolveActiveGameDir(settings);
-  return await importFromMinecraftDot(settings, gameDir);
+  try {
+    return await importFromMinecraftDot(settings, gameDir, payload?.sourceDir || '');
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
 });
 
 function getLocalServersHostId() {
