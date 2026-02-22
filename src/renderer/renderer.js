@@ -2726,16 +2726,6 @@ function wireUI() {
   $('#btnBrPresetMed')?.addEventListener('click', async () => applyBedrockPreset('medium'));
   $('#btnBrPresetHigh')?.addEventListener('click', async () => applyBedrockPreset('high'));
   $('#btnBrPresetUltra')?.addEventListener('click', async () => applyBedrockPreset('ultra'));
-  $('#btnBrLiveFps')?.addEventListener('click', async () => {
-    const on = getBedrockLiveFpsState(state.bedrockOptions || []);
-    const next = on ? '0' : '1';
-    for (const k of BEDROCK_LIVE_FPS_KEYS) {
-      await window.noc?.bedrockOptionsSet?.(k, next);
-    }
-    if (next === '1') await window.noc?.bedrockOptionsSet?.('gfx_hidehud', '0');
-    setStatus(`Bedrock: живой счётчик FPS ${next === '1' ? 'включён' : 'выключен'} (если игра запущена — перезапусти Bedrock)`);
-    await renderBedrockOptions();
-  });
   $('#brOptSearch')?.addEventListener('input', () => renderBedrockOptionsList());
   $('#btnBrUsefulOnly')?.addEventListener('click', () => {
     state.bedrockUsefulOnly = !state.bedrockUsefulOnly;
@@ -3431,25 +3421,6 @@ async function renderBedrockContent(tab) {
 }
 
 // Bedrock options (options.txt)
-const BEDROCK_LIVE_FPS_KEYS = ['dev_debug_hud', 'gfx_showfps', 'show_fps', 'dev_show_fps', 'dev_showfps', 'fps_counter'];
-
-function getBedrockLiveFpsState(items) {
-  const map = new Map((items || []).map(it => [String(it.key || '').toLowerCase(), String(it.value ?? '').trim().toLowerCase()]));
-  for (const k of BEDROCK_LIVE_FPS_KEYS) {
-    if (!map.has(k)) continue;
-    const v = map.get(k);
-    return (v === '1' || v === 'true');
-  }
-  return false;
-}
-
-function paintBedrockLiveFpsBtn() {
-  const btn = $('#btnBrLiveFps');
-  if (!btn) return;
-  const on = getBedrockLiveFpsState(state.bedrockOptions || []);
-  btn.textContent = `Живой FPS: ${on ? 'ВКЛ' : 'ВЫКЛ'}`;
-  btn.classList.toggle('acc', on);
-}
 
 async function renderBedrockOptions() {
   const hint = $('#bedrockOptionsHint');
@@ -3463,17 +3434,14 @@ async function renderBedrockOptions() {
       if (hint) hint.textContent = `Не удалось прочитать options.txt: ${r?.error || 'unknown'}`;
       state.bedrockOptions = [];
       renderBedrockOptionsList();
-      paintBedrockLiveFpsBtn();
       return;
     }
     state.bedrockOptions = r.items || [];
     if (hint) hint.textContent = `options.txt: ${r.path || '—'} • параметров: ${state.bedrockOptions.length}`;
     renderBedrockOptionsList();
-    paintBedrockLiveFpsBtn();
   } catch (e) {
     state.bedrockOptions = [];
     if (hint) hint.textContent = `Не удалось прочитать options.txt: ${e?.message || e}`;
-    paintBedrockLiveFpsBtn();
   }
 }
 
