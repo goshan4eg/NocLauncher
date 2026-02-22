@@ -1171,17 +1171,9 @@ async function startBedrockFpsMonitor() {
     const cmd = `$pm='${String(pm.exe).replace(/'/g,"''")}'; Start-Process -FilePath $pm -ArgumentList @(${argList}) -WindowStyle Hidden`;
     childProcess.execFile('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', cmd], { windowsHide: true }, () => {});
 
-    // Aggressive hide for first seconds (if any console flashes).
+    // One-shot hide only (frequent powershell polling causes mouse/input stutter on some PCs).
     const hidePs = "$sig='[DllImport(\"user32.dll\")] public static extern bool ShowWindowAsync(IntPtr hWnd,int nCmdShow);'; Add-Type -Namespace NOC -Name Win -MemberDefinition $sig -ErrorAction SilentlyContinue | Out-Null; Get-Process PresentMon,conhost,cmd -ErrorAction SilentlyContinue | ForEach-Object { if($_.MainWindowHandle -ne 0){ [NOC.Win]::ShowWindowAsync($_.MainWindowHandle,0) | Out-Null } }";
-    let hideTicks = 0;
-    bedrockFpsHideTimer = setInterval(() => {
-      hideTicks++;
-      try { childProcess.execFile('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', hidePs], { windowsHide: true }, () => {}); } catch (_) {}
-      if (hideTicks >= 30) {
-        try { clearInterval(bedrockFpsHideTimer); } catch (_) {}
-        bedrockFpsHideTimer = null;
-      }
-    }, 120);
+    try { childProcess.execFile('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', hidePs], { windowsHide: true }, () => {}); } catch (_) {}
 
     let csvLastSize = 0;
     let header = null;
