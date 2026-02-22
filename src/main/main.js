@@ -4511,23 +4511,28 @@ ipcMain.handle('bedrock:microsoftDiag', async () => {
 ipcMain.handle('bedrock:microsoftQuickFix', async () => {
   if (process.platform !== 'win32') return { ok: false, error: 'windows_only' };
   const steps = [];
-  const mark = (name, ok, error = '') => steps.push({ name, ok: !!ok, error: error ? String(error) : '' });
+  const mark = (name, ok, error = '', details = '') => steps.push({ name, ok: !!ok, error: error ? String(error) : '', details: details ? String(details) : '' });
 
   try {
+    try {
+      await runPowerShellAsync("Start-Service -Name BITS -ErrorAction SilentlyContinue; Start-Service -Name wuauserv -ErrorAction SilentlyContinue; Start-Service -Name ClipSVC -ErrorAction SilentlyContinue; Start-Service -Name XblAuthManager -ErrorAction SilentlyContinue; Start-Service -Name XblGameSave -ErrorAction SilentlyContinue; Start-Service -Name XboxNetApiSvc -ErrorAction SilentlyContinue; Start-Service -Name GamingServices -ErrorAction SilentlyContinue; Start-Service -Name GamingServicesNet -ErrorAction SilentlyContinue; 'ok'");
+      mark('start_core_and_xbox_services', true);
+    } catch (e) { mark('start_core_and_xbox_services', false, e?.message || e); }
+
+    try {
+      await runPowerShellAsync("$ErrorActionPreference='SilentlyContinue'; Get-AppxPackage -AllUsers Microsoft.GamingServices | Remove-AppxPackage -AllUsers; Start-Sleep -Seconds 1; Start-Process 'ms-windows-store://pdp/?productid=9MWPM2CQNLHN'; 'ok'");
+      mark('reinstall_gaming_services_all_users', true);
+    } catch (e) { mark('reinstall_gaming_services_all_users', false, e?.message || e); }
+
     try {
       await execFileAsync('cmd', ['/c', 'start', '', '/b', 'wsreset.exe'], { windowsHide: true });
       mark('wsreset', true);
     } catch (e) { mark('wsreset', false, e?.message || e); }
 
     try {
-      await runPowerShellAsync("Start-Service -Name BITS -ErrorAction SilentlyContinue; Start-Service -Name wuauserv -ErrorAction SilentlyContinue; Start-Service -Name ClipSVC -ErrorAction SilentlyContinue; 'ok'");
-      mark('start_core_services', true);
-    } catch (e) { mark('start_core_services', false, e?.message || e); }
-
-    try {
-      await runPowerShellAsync("$ErrorActionPreference='SilentlyContinue'; Get-AppxPackage -Name Microsoft.GamingServices | Remove-AppxPackage; Start-Sleep -Seconds 1; Start-Process 'ms-windows-store://pdp/?productid=9MWPM2CQNLHN'; 'ok'");
-      mark('reinstall_gaming_services', true);
-    } catch (e) { mark('reinstall_gaming_services', false, e?.message || e); }
+      const svc = await runPowerShellAsync("Get-Service ClipSVC,BITS,wuauserv,XblAuthManager,XblGameSave,XboxNetApiSvc,GamingServices,GamingServicesNet | Select-Object Name,Status,StartType | ConvertTo-Json -Compress");
+      mark('service_snapshot', true, '', svc);
+    } catch (e) { mark('service_snapshot', false, e?.message || e); }
 
     try {
       await shell.openExternal('ms-windows-store://downloadsandupdates');
@@ -4535,11 +4540,16 @@ ipcMain.handle('bedrock:microsoftQuickFix', async () => {
     } catch (e) { mark('open_store_updates', false, e?.message || e); }
 
     try {
+      await shell.openExternal('ms-windows-store://pdp/?productid=9MV0B5HZVK9Z');
+      mark('open_xbox_app_store', true);
+    } catch (e) { mark('open_xbox_app_store', false, e?.message || e); }
+
+    try {
       await shell.openExternal('ms-windows-store://pdp/?PFN=Microsoft.MinecraftUWP_8wekyb3d8bbwe');
       mark('open_minecraft_store', true);
     } catch (e) { mark('open_minecraft_store', false, e?.message || e); }
 
-    return { ok: true, steps };
+    return { ok: true, steps, note: 'Рекомендуется перезагрузка ПК после завершения фикса.' };
   } catch (e) {
     return { ok: false, error: String(e?.message || e), steps };
   }
