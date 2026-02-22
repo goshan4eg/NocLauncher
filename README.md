@@ -37,12 +37,12 @@
 
 ## 📦 Скачать
 
-**Текущий релиз:** `v1.0.4`
+**Текущий релиз:** `v1.0.5`
 
-- Windows x64: `NocLauncher-1.0.4-windows-x64.exe`
-- Windows x86: `NocLauncher-1.0.4-windows-x86.exe`
-- Linux x64: `NocLauncher-1.0.4-linux-x64.AppImage`
-- macOS x64: `NocLauncher-1.0.4-macos-x64.dmg` / `.zip`
+- Windows x64: `NocLauncher-1.0.5-windows-x64.exe`
+- Windows x86: `NocLauncher-1.0.5-windows-x86.exe`
+- Linux x64: `NocLauncher-1.0.5-linux-x64.AppImage`
+- macOS x64: `NocLauncher-1.0.5-macos-x64.dmg` / `.zip`
 
 👉 Все файлы доступны в **GitHub Releases → Assets**:
 <https://github.com/NocCorporation/NocLauncher/releases>
@@ -54,7 +54,7 @@
 PowerShell-проверка:
 
 ```powershell
-Get-FileHash .\NocLauncher-1.0.4-windows-x64.exe -Algorithm SHA256
+Get-FileHash .\NocLauncher-1.0.5-windows-x64.exe -Algorithm SHA256
 ```
 
 Сверьте результат с хэшами из релиза.
@@ -121,3 +121,12 @@ MIT (`LICENSE`)
     <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=NocCorporation/NocLauncher&type=date&legend=top-left" />
   </picture>
 </a>
+
+---
+
+## Multiplayer Status (Beta)
+
+- Current multiplayer in NocLauncher is **local beta**.
+- Full global/public multiplayer requires powerful hosting, stable server infrastructure, and ongoing funding.
+- Project funding is currently closed, so full global multiplayer is planned for later stages.
+
