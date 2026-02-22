@@ -693,17 +693,17 @@ let mainReady = false;
 
 function createSplashWindow() {
   splashWin = new BrowserWindow({
-    width: 700,
-    height: 230,
+    width: 980,
+    height: 640,
     frame: false,
-    transparent: true,
+    transparent: false,
     resizable: false,
     movable: true,
     minimizable: false,
     maximizable: false,
     show: false,
     alwaysOnTop: true,
-    backgroundColor: '#00000000',
+    backgroundColor: '#0b0712',
     icon: path.join(ASSETS_DIR, 'icon.png'),
     webPreferences: {
       contextIsolation: true,
