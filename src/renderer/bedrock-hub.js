@@ -22,16 +22,15 @@
 
   function paintMiniFpsState(f) {
     const b = $('#btnMiniFps');
-    const st = $('#miniFpsStats');
+    const st = null;
     const on = !!f?.enabled;
     if (b) {
       b.textContent = on ? 'ВКЛ' : 'ВЫКЛ';
       b.classList.toggle('acc', on);
     }
     const err = String(f?.error || '');
-    if (st) {
-      if (!on) st.textContent = 'FPS: выключен';
-      else st.textContent = err ? `FPS: ошибка (${err})` : 'FPS: внешний оверлей';
+    if (err && on) {
+      setInviteStatus(`FPS монитор: ${err}`);
     }
   }
 
