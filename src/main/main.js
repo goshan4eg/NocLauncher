@@ -4449,13 +4449,22 @@ ipcMain.handle('bedrock:launch', async () => {
     const info = getBedrockAppInfo();
     const appId = String(info?.appId || 'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App').trim();
     const appUri = `shell:AppsFolder\\${appId}`;
+    const waitStarted = async (ms = 2500) => {
+      const until = Date.now() + ms;
+      while (Date.now() < until) {
+        try { if (isBedrockRunning()) return true; } catch (_) {}
+        await new Promise(r => setTimeout(r, 250));
+      }
+      return false;
+    };
 
     // Attempt 1: shell.openExternal(appUri)
     try {
       appendBedrockLaunchLog(`INFO: launching via shell.openExternal ${appUri}`);
       const r = await shell.openExternal(appUri);
-      launched = true;
       appendBedrockLaunchLog(`INFO: shell.openExternal appUri result=${String(r || 'ok')}`);
+      launched = await waitStarted(3000);
+      appendBedrockLaunchLog(launched ? 'INFO: start confirmed after shell.openExternal' : 'WARN: shell.openExternal did not start process');
     } catch (e) {
       appendBedrockLaunchLog(`WARN: shell.openExternal appUri failed: ${String(e?.message || e)}`);
     }
@@ -4465,7 +4474,8 @@ ipcMain.handle('bedrock:launch', async () => {
       try {
         appendBedrockLaunchLog('INFO: launching via explorer.exe AppsFolder URI');
         await execFileAsync('explorer.exe', [appUri], { windowsHide: true });
-        launched = true;
+        launched = await waitStarted(3000);
+        appendBedrockLaunchLog(launched ? 'INFO: start confirmed after explorer.exe' : 'WARN: explorer.exe did not start process');
       } catch (e) {
         appendBedrockLaunchLog(`WARN: explorer.exe appUri failed: ${String(e?.message || e)}`);
       }
@@ -4476,9 +4486,22 @@ ipcMain.handle('bedrock:launch', async () => {
       try {
         appendBedrockLaunchLog('INFO: launching via cmd start AppsFolder URI');
         await execFileAsync('cmd', ['/c', 'start', '', appUri], { windowsHide: true });
-        launched = true;
+        launched = await waitStarted(3000);
+        appendBedrockLaunchLog(launched ? 'INFO: start confirmed after cmd start' : 'WARN: cmd start did not start process');
       } catch (e) {
         appendBedrockLaunchLog(`WARN: cmd start appUri failed: ${String(e?.message || e)}`);
+      }
+    }
+
+    // Attempt 4: Start-Process by exact StartApps AppID
+    if (!launched) {
+      try {
+        appendBedrockLaunchLog('INFO: launching via PowerShell Start-Process (StartApps AppID)');
+        await runPowerShellAsync("$a=(Get-StartApps | Where-Object { $_.Name -like '*Minecraft for Windows*' -or $_.AppID -match 'MinecraftUWP' } | Select-Object -First 1).AppID; if($a){ Start-Process ('shell:AppsFolder\\' + $a); 'ok' } else { 'no_appid' }");
+        launched = await waitStarted(3000);
+        appendBedrockLaunchLog(launched ? 'INFO: start confirmed after PowerShell Start-Process' : 'WARN: PowerShell Start-Process did not start process');
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: PowerShell Start-Process failed: ${String(e?.message || e)}`);
       }
     }
 
