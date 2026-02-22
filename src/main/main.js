@@ -4416,8 +4416,24 @@ ipcMain.handle('bedrock:launch', async () => {
 
     // Hide launcher immediately, then launch Bedrock
     hideLauncherForGame();
-    appendBedrockLaunchLog('INFO: launching minecraft://');
-    await shell.openExternal('minecraft://');
+
+    // Prefer direct app launch from installed apps list (avoids Store redirect when protocol is broken)
+    let launched = false;
+    try {
+      const info = getBedrockAppInfo();
+      const appId = String(info?.appId || 'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App').trim();
+      appendBedrockLaunchLog(`INFO: launching via AppsFolder appId=${appId}`);
+      await execFileAsync('cmd', ['/c', 'start', '', `shell:AppsFolder\\${appId}`], { windowsHide: true });
+      launched = true;
+    } catch (e) {
+      appendBedrockLaunchLog(`WARN: AppsFolder launch failed: ${String(e?.message || e)}`);
+    }
+
+    // Fallback: protocol launch
+    if (!launched) {
+      appendBedrockLaunchLog('INFO: fallback launching minecraft://');
+      await shell.openExternal('minecraft://');
+    }
 
     // Non-blocking diagnostics in background (do not block launch path)
     setTimeout(() => {
