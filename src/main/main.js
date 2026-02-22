@@ -4419,14 +4419,40 @@ ipcMain.handle('bedrock:launch', async () => {
 
     // Prefer direct app launch from installed apps list (avoids Store redirect when protocol is broken)
     let launched = false;
+    const info = getBedrockAppInfo();
+    const appId = String(info?.appId || 'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App').trim();
+    const appUri = `shell:AppsFolder\\${appId}`;
+
+    // Attempt 1: shell.openExternal(appUri)
     try {
-      const info = getBedrockAppInfo();
-      const appId = String(info?.appId || 'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App').trim();
-      appendBedrockLaunchLog(`INFO: launching via AppsFolder appId=${appId}`);
-      await execFileAsync('cmd', ['/c', 'start', '', `shell:AppsFolder\\${appId}`], { windowsHide: true });
+      appendBedrockLaunchLog(`INFO: launching via shell.openExternal ${appUri}`);
+      const r = await shell.openExternal(appUri);
       launched = true;
+      appendBedrockLaunchLog(`INFO: shell.openExternal appUri result=${String(r || 'ok')}`);
     } catch (e) {
-      appendBedrockLaunchLog(`WARN: AppsFolder launch failed: ${String(e?.message || e)}`);
+      appendBedrockLaunchLog(`WARN: shell.openExternal appUri failed: ${String(e?.message || e)}`);
+    }
+
+    // Attempt 2: explorer.exe appUri
+    if (!launched) {
+      try {
+        appendBedrockLaunchLog('INFO: launching via explorer.exe AppsFolder URI');
+        await execFileAsync('explorer.exe', [appUri], { windowsHide: true });
+        launched = true;
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: explorer.exe appUri failed: ${String(e?.message || e)}`);
+      }
+    }
+
+    // Attempt 3: cmd start appUri
+    if (!launched) {
+      try {
+        appendBedrockLaunchLog('INFO: launching via cmd start AppsFolder URI');
+        await execFileAsync('cmd', ['/c', 'start', '', appUri], { windowsHide: true });
+        launched = true;
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: cmd start appUri failed: ${String(e?.message || e)}`);
+      }
     }
 
     // Fallback: protocol launch
