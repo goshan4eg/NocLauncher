@@ -1093,6 +1093,24 @@ function emitBedrockFpsState() {
   try { if (bedrockFpsOverlayWin && !bedrockFpsOverlayWin.isDestroyed()) bedrockFpsOverlayWin.webContents.send('bedrock:fps', payload); } catch (_) {}
 }
 
+function hasPresentMonAccess() {
+  try {
+    const out = execFileSync('powershell', ['-NoProfile', '-Command', "$g=(whoami /groups) -match 'S-1-5-32-559'; if($g){'1'} else {'0'}"], { stdio: ['ignore', 'pipe', 'ignore'] }).toString('utf8').trim();
+    if (out === '1') return true;
+  } catch (_) {}
+  return false;
+}
+
+function requestPresentMonAccessSetup() {
+  try {
+    const ps = "$u=$env:USERNAME; Start-Process -Verb RunAs -WindowStyle Hidden -FilePath powershell -ArgumentList '-NoProfile -Command \"try { Add-LocalGroupMember -SID S-1-5-32-559 -Member '''+$u+''' -ErrorAction Stop } catch {}\"'";
+    childProcess.execFile('powershell', ['-NoProfile', '-WindowStyle', 'Hidden', '-Command', ps], { windowsHide: true }, () => {});
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+}
+
 async function ensurePresentMonBinary() {
   // Deterministic mode: no runtime downloads.
   // We only use bundled/local binary paths to avoid "works/doesn't work" behavior.
@@ -1144,6 +1162,13 @@ function stopBedrockFpsMonitor() {
 async function startBedrockFpsMonitor() {
   if (process.platform !== 'win32') return { ok: false, error: 'windows_only' };
   if (bedrockFpsState.enabled) return { ok: true, already: true };
+
+  if (!hasPresentMonAccess()) {
+    requestPresentMonAccessSetup();
+    bedrockFpsState = { ...bedrockFpsState, enabled: false, available: false, backend: 'presentmon', error: 'presentmon_access_setup_required: подтвердите UAC и перезапустите лаунчер' };
+    emitBedrockFpsState();
+    return { ok: false, error: bedrockFpsState.error };
+  }
 
   const pm = await ensurePresentMonBinary();
   if (!pm?.ok) {
