@@ -683,9 +683,13 @@ function appendBedrockLaunchLog(line) {
     const gameDir = resolveActiveGameDir(settings);
     const logDir = path.join(gameDir, 'launcher_logs');
     fs.mkdirSync(logDir, { recursive: true });
-    const logPath = path.join(logDir, 'latest-bedrock.txt');
-    fs.appendFileSync(logPath, `[${tsIso()}] ${line}${os.EOL}`, 'utf8');
-    return logPath;
+    const bedrockLog = path.join(logDir, 'latest-bedrock.txt');
+    const commonLog = path.join(logDir, 'latest.txt');
+    const row = `[${tsIso()}] ${line}${os.EOL}`;
+    fs.appendFileSync(bedrockLog, row, 'utf8');
+    // Mirror Bedrock diagnostics to common latest.txt so existing UI log flows can find it.
+    fs.appendFileSync(commonLog, row, 'utf8');
+    return bedrockLog;
   } catch (_) {
     return null;
   }
@@ -4417,6 +4421,7 @@ ipcMain.handle('bedrock:launch', async () => {
   let bedrockLogPath = null;
   try {
     bedrockLogPath = appendBedrockLaunchLog('INFO: Bedrock launch requested');
+    if (bedrockLogPath) sendMcState('logpath', { logDir: path.dirname(bedrockLogPath), logPath: bedrockLogPath });
 
     // Preflight checks before launch
     const pf = await bedrockPreflightChecks();
@@ -4489,10 +4494,18 @@ ipcMain.handle('bedrock:launch', async () => {
         const running = isBedrockRunning();
         if (running) {
           appendBedrockLaunchLog('INFO: Bedrock process detected');
+          sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
         } else {
           appendBedrockLaunchLog('ERROR: Bedrock process not detected after 4s');
           const diag = await collectBedrockLaunchFailureDiagnostics();
           appendBedrockLaunchLog(`ERROR: failure-diagnostics=${JSON.stringify(diag)}`);
+          sendMcState('error', {
+            error: 'Bedrock не запустился (процесс не найден через 4с). Открой latest-bedrock.txt.',
+            version: 'bedrock',
+            logPath: bedrockLogPath || '',
+            tail: ''
+          });
+          restoreLauncherAfterGame();
         }
       } catch (e) {
         appendBedrockLaunchLog(`WARN: post-launch check failed: ${String(e?.message || e)}`);
