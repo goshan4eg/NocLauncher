@@ -52,6 +52,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "instrumente",
+        "to": "instrumente",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {

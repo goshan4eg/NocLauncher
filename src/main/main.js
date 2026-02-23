@@ -4313,6 +4313,21 @@ ipcMain.handle('fs:openPath', async (_e, p) => {
   }
 });
 
+ipcMain.handle('instrumente:open', async () => {
+  try {
+    const candidates = [
+      path.join(APP_ROOT, 'instrumente'),
+      path.join(process.resourcesPath, 'instrumente')
+    ];
+    const target = candidates.find(p => fs.existsSync(p));
+    if (!target) return { ok: false, error: 'instrumente_not_found' };
+    await shell.openPath(target);
+    return { ok: true, path: target };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
 function getBedrockAppInfo() {
   // Try to detect real installed appId from Start menu entries first
   try {

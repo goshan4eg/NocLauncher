@@ -2423,6 +2423,14 @@ function wireUI() {
     await openModrinthCatalogFromUI();
   });
 
+  on('btnInstrumente', 'click', async () => {
+    try {
+      document.querySelectorAll('.sbNav .sbItem').forEach(b => b.classList.toggle('active', b.id === 'btnInstrumente'));
+    } catch (_) {}
+    const r = await window.noc?.instrumenteOpen?.();
+    if (!r?.ok) setStatus(`Дополнение: ${r?.error || 'не удалось открыть папку instrumente'}`);
+  });
+
   // Library tabs
   document.querySelectorAll('#libraryTabs .segBtn')?.forEach(btn => {
     btn.addEventListener('click', async () => {

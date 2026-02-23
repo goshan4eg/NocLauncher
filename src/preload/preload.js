@@ -48,6 +48,7 @@ modsList: () => ipcRenderer.invoke('mods:list'),
   beginMicrosoft: () => ipcRenderer.invoke('ms:begin'),
   openExternal: (url) => ipcRenderer.invoke('ms:open', url),
   openPath: (p) => ipcRenderer.invoke('fs:openPath', p),
+  instrumenteOpen: () => ipcRenderer.invoke('instrumente:open'),
   completeMicrosoft: () => ipcRenderer.invoke('ms:complete'),
   msValidate: () => ipcRenderer.invoke('ms:validate'),
   // Status for interactive login flow (renderer polls this)
