@@ -4336,13 +4336,11 @@ ipcMain.handle('instrumente:open', async () => {
       return { ok: false, error: 'instrumente_exe_not_found', path: dir };
     }
 
-    const p = childProcess.spawn(exePath, [], {
-      cwd: dir,
-      detached: true,
-      windowsHide: false,
-      stdio: 'ignore'
-    });
-    p.unref();
+    // Most reliable on Windows for external GUI tools.
+    const openErr = await shell.openPath(exePath);
+    if (openErr) {
+      return { ok: false, error: `instrumente_launch_failed: ${openErr}`, exe: exePath };
+    }
 
     return { ok: true, launched: true, exe: exePath };
   } catch (e) {
