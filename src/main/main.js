@@ -4319,10 +4319,32 @@ ipcMain.handle('instrumente:open', async () => {
       path.join(APP_ROOT, 'instrumente'),
       path.join(process.resourcesPath, 'instrumente')
     ];
-    const target = candidates.find(p => fs.existsSync(p));
-    if (!target) return { ok: false, error: 'instrumente_not_found' };
-    await shell.openPath(target);
-    return { ok: true, path: target };
+    const dir = candidates.find(p => fs.existsSync(p));
+    if (!dir) return { ok: false, error: 'instrumente_not_found' };
+
+    const preferredExe = path.join(dir, 'KG UP - Mod Installer.exe');
+    let exePath = '';
+    if (fs.existsSync(preferredExe)) {
+      exePath = preferredExe;
+    } else {
+      const firstExe = (fs.readdirSync(dir) || []).find(n => String(n).toLowerCase().endsWith('.exe'));
+      if (firstExe) exePath = path.join(dir, firstExe);
+    }
+
+    if (!exePath) {
+      await shell.openPath(dir);
+      return { ok: false, error: 'instrumente_exe_not_found', path: dir };
+    }
+
+    const p = childProcess.spawn(exePath, [], {
+      cwd: dir,
+      detached: true,
+      windowsHide: false,
+      stdio: 'ignore'
+    });
+    p.unref();
+
+    return { ok: true, launched: true, exe: exePath };
   } catch (e) {
     return { ok: false, error: String(e?.message || e) };
   }

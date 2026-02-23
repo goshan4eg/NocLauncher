@@ -2428,7 +2428,11 @@ function wireUI() {
       document.querySelectorAll('.sbNav .sbItem').forEach(b => b.classList.toggle('active', b.id === 'btnInstrumente'));
     } catch (_) {}
     const r = await window.noc?.instrumenteOpen?.();
-    if (!r?.ok) setStatus(`Дополнение: ${r?.error || 'не удалось открыть папку instrumente'}`);
+    if (r?.ok) {
+      setStatus('Дополнение: инструмент запущен.');
+    } else {
+      setStatus(`Дополнение: ${r?.error || 'не удалось запустить инструмент'}`);
+    }
   });
 
   // Library tabs
