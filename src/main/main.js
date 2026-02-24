@@ -590,15 +590,25 @@ function listBedrockInterestingFiles(roots = []) {
   return out;
 }
 
+function bedrockIntegrityCleanDir() {
+  const p = path.join(app.getPath('userData'), 'bedrock-clean', 'integrity');
+  try { fs.mkdirSync(p, { recursive: true }); } catch (_) {}
+  return p;
+}
+
 function captureBedrockIntegrityBaseline() {
   const systemTargets = bedrockIntegrityTargets();
   const roots = bedrockIntegrityRoots();
   const files = {};
+  const cleanDir = bedrockIntegrityCleanDir();
 
   for (const p of systemTargets) {
     try {
       const st = fs.statSync(p);
-      files[p] = { sha256: sha256FileSync(p), size: st.size, mtimeMs: st.mtimeMs };
+      const sha = sha256FileSync(p);
+      const cleanPath = path.join(cleanDir, `${sha}_${path.basename(p)}`);
+      try { if (!fs.existsSync(cleanPath)) fs.copyFileSync(p, cleanPath); } catch (_) {}
+      files[p] = { sha256: sha, size: st.size, mtimeMs: st.mtimeMs, cleanPath };
     } catch (_) {}
   }
 
@@ -608,7 +618,10 @@ function captureBedrockIntegrityBaseline() {
       // Track only known suspicious injection filenames.
       if (!isBedrockSuspiciousName(p)) continue;
       const st = fs.statSync(p);
-      files[p] = { sha256: sha256FileSync(p), size: st.size, mtimeMs: st.mtimeMs };
+      const sha = sha256FileSync(p);
+      const cleanPath = path.join(cleanDir, `${sha}_${path.basename(p)}`);
+      try { if (!fs.existsSync(cleanPath)) fs.copyFileSync(p, cleanPath); } catch (_) {}
+      files[p] = { sha256: sha, size: st.size, mtimeMs: st.mtimeMs, cleanPath };
     } catch (_) {}
   }
 
@@ -621,6 +634,56 @@ function readBedrockIntegrityBaseline() {
   const b = store.get('bedrockIntegrityBaseline');
   if (b && typeof b === 'object' && b.files && typeof b.files === 'object') return b;
   return null;
+}
+
+function bedrockAutoReplaceAllFromBaseline() {
+  let baseline = readBedrockIntegrityBaseline();
+  if (!baseline || !Object.keys(baseline.files || {}).length) baseline = captureBedrockIntegrityBaseline();
+
+  const replaced = [];
+  const needRepair = [];
+  const failed = [];
+
+  for (const [targetPath, meta] of Object.entries(baseline.files || {})) {
+    try {
+      const expected = String(meta?.sha256 || '').toLowerCase();
+      const cleanPath = String(meta?.cleanPath || '');
+      if (!expected) continue;
+
+      let actual = '';
+      if (fs.existsSync(targetPath)) {
+        try { actual = sha256FileSync(targetPath).toLowerCase(); } catch (_) {}
+      }
+      if (actual === expected) continue;
+
+      if (isSystemProtectedPath(targetPath)) {
+        needRepair.push(targetPath);
+        continue;
+      }
+
+      if (!cleanPath || !fs.existsSync(cleanPath)) {
+        failed.push({ path: targetPath, error: 'missing_clean_copy' });
+        continue;
+      }
+
+      try { fs.mkdirSync(path.dirname(targetPath), { recursive: true }); } catch (_) {}
+      fs.copyFileSync(cleanPath, targetPath);
+      replaced.push({ path: targetPath, from: cleanPath });
+    } catch (e) {
+      failed.push({ path: targetPath, error: String(e?.message || e) });
+    }
+  }
+
+  appendBedrockIntegrityEvent('integrity_autoreplace_all', {
+    replacedCount: replaced.length,
+    needRepairCount: needRepair.length,
+    failedCount: failed.length,
+    replaced,
+    needRepair,
+    failed
+  });
+
+  return { ok: failed.length === 0, replaced, needRepair, failed };
 }
 
 function isBedrockAppxInstallPath(p) {
@@ -5347,6 +5410,18 @@ ipcMain.handle('bedrock:launch', async () => {
       appendBedrockLaunchLog(`INFO: mods_baseline_repair=${JSON.stringify(modsRepair)}`);
     } catch (e) {
       appendBedrockLaunchLog(`WARN: mods_baseline_repair_failed=${String(e?.message || e)}`);
+    }
+
+    // Aggressive auto-replace from baseline before every launch.
+    try {
+      const autoReplace = bedrockAutoReplaceAllFromBaseline();
+      appendBedrockLaunchLog(`INFO: integrity_autoreplace_all=${JSON.stringify(autoReplace)}`);
+      if (Array.isArray(autoReplace?.needRepair) && autoReplace.needRepair.length) {
+        const r = await bedrockIntegrityRepair(autoReplace.needRepair);
+        appendBedrockLaunchLog(`INFO: integrity_autoreplace_repair=${JSON.stringify(r)}`);
+      }
+    } catch (e) {
+      appendBedrockLaunchLog(`WARN: integrity_autoreplace_all_failed=${String(e?.message || e)}`);
     }
 
     // Integrity guard: auto-repair/quarantine before every launch.
