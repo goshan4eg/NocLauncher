@@ -853,6 +853,10 @@ function restoreBedrockModsBaseline() {
   // restore baseline files by content
   for (const [targetPath, meta] of Object.entries(baseline.files || {})) {
     try {
+      if (isBedrockSuspiciousName(targetPath)) {
+        failed.push({ path: targetPath, error: 'suspicious_in_baseline_ignored' });
+        continue;
+      }
       const expected = String(meta?.sha256 || '').toLowerCase();
       const cleanPath = String(meta?.cleanPath || '');
       if (!expected || !cleanPath || !fs.existsSync(cleanPath)) {
@@ -883,10 +887,11 @@ function restoreBedrockModsBaseline() {
   for (const dir of baseline.dirs || []) {
     for (const fp of listDllFilesFlat(dir)) {
       try {
-        if (baselineSet.has(String(fp).toLowerCase())) continue;
+        const suspicious = isBedrockSuspiciousName(fp);
+        if (!suspicious && baselineSet.has(String(fp).toLowerCase())) continue;
         const q = bedrockQuarantineFile(fp);
-        if (q.ok) quarantined.push({ path: fp, movedTo: q.movedTo, elevated: false });
-        else quarantined.push({ path: fp, error: q.error || 'quarantine_failed' });
+        if (q.ok) quarantined.push({ path: fp, movedTo: q.movedTo, elevated: false, suspicious });
+        else quarantined.push({ path: fp, error: q.error || 'quarantine_failed', suspicious });
       } catch (e) {
         quarantined.push({ path: fp, error: String(e?.message || e) });
       }
