@@ -5,8 +5,8 @@
 </p>
 
 <p align="center">
-  <b>Кастомный Minecraft Launcher (Java + Bedrock)</b><br>
-  <i>Быстрый запуск, удобный UI, диагностика и инструменты для Bedrock.</i>
+  <b>Официальный NocLauncher — лаунчер Minecraft Java + Bedrock</b><br>
+  <i>Быстрый запуск, удобный UI, диагностика и инструменты для Bedrock. Официальный GitHub-репозиторий проекта: NocCorporation/NocLauncher.</i>
 </p>
 
 <p align="center">
@@ -54,8 +54,11 @@
 
 - Windows x64: `NocLauncher Setup 1.0.6.exe`
 
-Все файлы:
+Официальная страница релизов:
 <https://github.com/NocCorporation/NocLauncher/releases>
+
+Официальный репозиторий:
+<https://github.com/NocCorporation/NocLauncher>
 
 ---
 
@@ -78,6 +81,16 @@
 ```powershell
 Get-FileHash .\NocLauncher Setup 1.0.6.exe -Algorithm SHA256
 ```
+
+---
+
+## 🔎 Поисковые запросы (официально)
+
+Чтобы найти именно официальный проект, используйте:
+
+- `NocLauncher GitHub`
+- `NocCorporation NocLauncher`
+- `NocLauncher Minecraft Java Bedrock`
 
 ---
 
