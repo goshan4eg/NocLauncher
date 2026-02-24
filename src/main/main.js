@@ -493,11 +493,36 @@ function sha256FileSync(filePath) {
   }
 }
 
+let bedrockInstallLocationCache = { path: '', ts: 0 };
+
+function getBedrockInstallLocationSync() {
+  try {
+    const nowTs = Date.now();
+    if (bedrockInstallLocationCache.path && (nowTs - bedrockInstallLocationCache.ts) < 60000) return bedrockInstallLocationCache.path;
+    const cmd = "(Get-AppxPackage -Name Microsoft.MinecraftUWP | Select-Object -First 1 -ExpandProperty InstallLocation)";
+    const out = execFileSync('powershell', ['-NoProfile', '-Command', cmd], { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim();
+    bedrockInstallLocationCache = { path: out || '', ts: nowTs };
+    return bedrockInstallLocationCache.path;
+  } catch (_) {
+    return '';
+  }
+}
+
 function bedrockIntegrityTargets() {
   const list = [
     path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'Windows.ApplicationModel.Store.dll'),
     path.join(process.env.WINDIR || 'C:\\Windows', 'SysWOW64', 'Windows.ApplicationModel.Store.dll')
   ];
+
+  // Critical Bedrock runtime files inside installed package location
+  try {
+    const install = getBedrockInstallLocationSync();
+    if (install) {
+      list.push(path.join(install, 'vcruntime140_1.dll'));
+      list.push(path.join(install, 'vcruntime140.dll'));
+    }
+  } catch (_) {}
+
   return list.filter(p => fs.existsSync(p));
 }
 
@@ -509,7 +534,8 @@ function bedrockSuspiciousInjectionNames() {
     'winmm.dll',
     'version.dll',
     'dxgi.dll',
-    'd3d11.dll'
+    'd3d11.dll',
+    'minecraftforfree.dll'
   ];
 }
 
@@ -597,10 +623,20 @@ function readBedrockIntegrityBaseline() {
   return null;
 }
 
+function isBedrockAppxInstallPath(p) {
+  const s = String(p || '').toLowerCase().replace(/\//g, '\\');
+  return s.includes('\\program files\\windowsapps\\microsoft.minecraftuwp_');
+}
+
 function isSystemProtectedPath(p) {
   const s = String(p || '').toLowerCase();
   const win = String(process.env.WINDIR || 'C:\\Windows').toLowerCase();
-  return s.startsWith(path.join(win, 'system32').toLowerCase()) || s.startsWith(path.join(win, 'syswow64').toLowerCase());
+  return s.startsWith(path.join(win, 'system32').toLowerCase()) || s.startsWith(path.join(win, 'syswow64').toLowerCase()) || isBedrockAppxInstallPath(s);
+}
+
+function isModsDllPath(p) {
+  const s = String(p || '').toLowerCase().replace(/\//g, '\\');
+  return s.includes('\\mods\\') && s.endsWith('.dll');
 }
 
 function bedrockQuarantineFile(filePath) {
@@ -686,6 +722,11 @@ async function bedrockIntegrityCheck() {
     if (!baseEntry && suspiciousNames.has(bn)) {
       mismatches.push({ path: p, reason: 'unexpected_suspicious_file', name: bn });
       checked.push({ path: p, exists: true, ok: false, unexpected: true, suspicious: true });
+      continue;
+    }
+    if (isModsDllPath(p) && (!baseEntry || suspiciousNames.has(bn))) {
+      mismatches.push({ path: p, reason: 'mods_dll_injection', name: bn });
+      checked.push({ path: p, exists: true, ok: false, modsDll: true });
     }
   }
 
@@ -704,10 +745,12 @@ async function bedrockIntegrityRepair(paths = []) {
   if (!uniq.length) return { ok: false, error: 'nothing_to_repair' };
 
   const repairedSystem = [];
+  const repairedAppx = [];
   const quarantined = [];
   const failed = [];
 
-  const sysTargets = uniq.filter(isSystemProtectedPath);
+  const appxTargets = uniq.filter(isBedrockAppxInstallPath);
+  const sysTargets = uniq.filter(p => isSystemProtectedPath(p) && !isBedrockAppxInstallPath(p));
   const userTargets = uniq.filter(p => !isSystemProtectedPath(p));
 
   if (sysTargets.length) {
@@ -720,6 +763,17 @@ async function bedrockIntegrityRepair(paths = []) {
       repairedSystem.push(...sysTargets);
     } catch (e) {
       failed.push({ path: '(system_batch)', error: String(e?.message || e) });
+    }
+  }
+
+  if (appxTargets.length) {
+    try {
+      const inner = "$ErrorActionPreference='SilentlyContinue'; Get-AppxPackage -AllUsers Microsoft.MinecraftUWP | ForEach-Object { Add-AppxPackage -DisableDevelopmentMode -Register ($_.InstallLocation + '\\AppxManifest.xml') }; 'ok'";
+      const cmd = `Start-Process -FilePath powershell -Verb RunAs -WindowStyle Normal -ArgumentList '-NoProfile','-Command','${inner.replace(/'/g, "''")}'`;
+      await runPowerShellAsync(cmd);
+      repairedAppx.push(...appxTargets);
+    } catch (e) {
+      failed.push({ path: '(appx_reregister)', error: String(e?.message || e) });
     }
   }
 
@@ -741,6 +795,7 @@ async function bedrockIntegrityRepair(paths = []) {
   return {
     ok: failed.length === 0,
     repairedSystem,
+    repairedAppx,
     quarantined,
     failed,
     paths: uniq
