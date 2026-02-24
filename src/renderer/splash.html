@@ -58,16 +58,16 @@
       width: 54px;
       height: 54px;
       border-radius: 18px;
-      display:grid;
-      place-items:center;
-      font-weight: 1000;
-      font-size: 22px;
-      color: rgba(255,255,255,.98);
-      background: radial-gradient(120% 120% at 30% 20%, rgba(47,191,84,.98), rgba(20,76,60,.96));
+      overflow: hidden;
       border: 1px solid rgba(255,255,255,.28);
       box-shadow: 0 14px 26px rgba(0,0,0,.30), 0 0 20px rgba(47,191,84,.28);
-      text-shadow: 0 2px 0 rgba(0,0,0,.25);
-      letter-spacing: .02em;
+      background: rgba(18,64,46,.92);
+    }
+    .logo img{
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
 
     .title{ font-weight: 1000; font-size: 18px; letter-spacing: .2px; }
@@ -175,7 +175,7 @@
   <div class="sakura" id="sakura" aria-hidden="true"></div>
   <div class="wrap" aria-label="Загрузка NocLauncher">
     <div class="brand">
-      <div class="logo" aria-hidden="true">N</div>
+      <div class="logo" aria-hidden="true"><img src="../../assets/icon.png" alt="" /></div>
       <div>
         <div class="title">NocLauncher</div>
         <div class="sub">Запускаю лаунчер…</div>

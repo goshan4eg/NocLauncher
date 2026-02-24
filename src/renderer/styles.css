@@ -290,14 +290,16 @@ textarea.ta{
   width: 36px;
   height: 36px;
   border-radius: 11px;
-  display: grid;
-  place-items: center;
-  font-weight: 1000;
-  font-size: 19px;
-  color: rgba(255,255,255,.98);
-  background: linear-gradient(145deg, #b44dff 0%, #6b46ff 55%, #4b2ec2 100%);
+  overflow: hidden;
   border: 1px solid rgba(255,255,255,.26);
-  box-shadow: 0 10px 20px rgba(98,57,214,.42), inset 0 1px 0 rgba(255,255,255,.25);
+  box-shadow: 0 10px 20px rgba(48,148,94,.30), inset 0 1px 0 rgba(255,255,255,.20);
+  background: rgba(20,80,58,.9);
+}
+.sbLogo img{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 .sbBrandTxt{ min-width: 0; }
 .sbName{ font-weight: 900; letter-spacing: .2px; }
