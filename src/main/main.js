@@ -675,6 +675,122 @@ async function bedrockQuarantineFileElevated(filePath) {
   }
 }
 
+function bedrockModsDirs() {
+  const dirs = [];
+  try {
+    const install = getBedrockInstallLocationSync();
+    if (install) dirs.push(path.join(install, 'mods'));
+  } catch (_) {}
+  try {
+    const p = bedrockPaths();
+    if (p?.comMojang) dirs.push(path.join(p.comMojang, 'mods'));
+    if (p?.sharedComMojang) dirs.push(path.join(p.sharedComMojang, 'mods'));
+  } catch (_) {}
+  return Array.from(new Set(dirs));
+}
+
+function listDllFilesFlat(dir) {
+  try {
+    if (!fs.existsSync(dir)) return [];
+    return fs.readdirSync(dir, { withFileTypes: true })
+      .filter(e => e.isFile() && String(e.name || '').toLowerCase().endsWith('.dll'))
+      .map(e => path.join(dir, e.name));
+  } catch (_) {
+    return [];
+  }
+}
+
+function bedrockCleanStoreDir() {
+  const p = path.join(app.getPath('userData'), 'bedrock-clean', 'mods');
+  try { fs.mkdirSync(p, { recursive: true }); } catch (_) {}
+  return p;
+}
+
+function captureBedrockModsBaseline() {
+  const dirs = bedrockModsDirs();
+  const files = {};
+  const cleanRoot = bedrockCleanStoreDir();
+
+  for (const dir of dirs) {
+    for (const fp of listDllFilesFlat(dir)) {
+      try {
+        const st = fs.statSync(fp);
+        const sha = sha256FileSync(fp);
+        const cleanName = `${sha}_${path.basename(fp)}`;
+        const cleanPath = path.join(cleanRoot, cleanName);
+        if (!fs.existsSync(cleanPath)) fs.copyFileSync(fp, cleanPath);
+        files[fp] = { sha256: sha, size: st.size, cleanPath, name: path.basename(fp), dir };
+      } catch (_) {}
+    }
+  }
+
+  const out = { createdAt: Date.now(), dirs, files };
+  store.set('bedrockModsBaseline', out);
+  return out;
+}
+
+function readBedrockModsBaseline() {
+  const b = store.get('bedrockModsBaseline');
+  if (b && typeof b === 'object' && b.files && typeof b.files === 'object') return b;
+  return null;
+}
+
+function restoreBedrockModsBaseline() {
+  let baseline = readBedrockModsBaseline();
+  if (!baseline || !Object.keys(baseline.files || {}).length) {
+    baseline = captureBedrockModsBaseline();
+  }
+
+  const restored = [];
+  const quarantined = [];
+  const failed = [];
+
+  // restore baseline files by content
+  for (const [targetPath, meta] of Object.entries(baseline.files || {})) {
+    try {
+      const expected = String(meta?.sha256 || '').toLowerCase();
+      const cleanPath = String(meta?.cleanPath || '');
+      if (!expected || !cleanPath || !fs.existsSync(cleanPath)) {
+        failed.push({ path: targetPath, error: 'missing_clean_copy' });
+        continue;
+      }
+
+      let ok = false;
+      if (fs.existsSync(targetPath)) {
+        try {
+          const actual = sha256FileSync(targetPath).toLowerCase();
+          ok = actual === expected;
+        } catch (_) {}
+      }
+
+      if (!ok) {
+        try { fs.mkdirSync(path.dirname(targetPath), { recursive: true }); } catch (_) {}
+        fs.copyFileSync(cleanPath, targetPath);
+        restored.push({ path: targetPath, from: cleanPath });
+      }
+    } catch (e) {
+      failed.push({ path: targetPath, error: String(e?.message || e) });
+    }
+  }
+
+  // quarantine unexpected DLLs in monitored mods dirs
+  const baselineSet = new Set(Object.keys(baseline.files || {}).map(p => String(p).toLowerCase()));
+  for (const dir of baseline.dirs || []) {
+    for (const fp of listDllFilesFlat(dir)) {
+      try {
+        if (baselineSet.has(String(fp).toLowerCase())) continue;
+        const q = bedrockQuarantineFile(fp);
+        if (q.ok) quarantined.push({ path: fp, movedTo: q.movedTo, elevated: false });
+        else quarantined.push({ path: fp, error: q.error || 'quarantine_failed' });
+      } catch (e) {
+        quarantined.push({ path: fp, error: String(e?.message || e) });
+      }
+    }
+  }
+
+  return { ok: failed.length === 0, restored, quarantined, failed };
+}
+
 async function bedrockIntegrityCheck() {
   if (process.platform !== 'win32') return { ok: true, windowsOnly: true };
   let baseline = readBedrockIntegrityBaseline();
@@ -1565,6 +1681,15 @@ function watchBedrockAndRestore() {
   const maxWaitToAppearMs = 30000;
   const hardStopMs = 8 * 60 * 60 * 1000;
 
+  const postCloseRepair = () => {
+    try {
+      const modsRepair = restoreBedrockModsBaseline();
+      appendBedrockLaunchLog(`INFO: mods_post_close_repair=${JSON.stringify(modsRepair)}`);
+    } catch (e) {
+      appendBedrockLaunchLog(`WARN: mods_post_close_repair_failed=${String(e?.message || e)}`);
+    }
+  };
+
   const timer = setInterval(() => {
     try {
       const running = isBedrockRunning();
@@ -1575,6 +1700,7 @@ function watchBedrockAndRestore() {
         clearInterval(timer);
         closeBedrockHubWindow();
         stopBedrockFpsMonitor();
+        postCloseRepair();
         restoreLauncherAfterGame();
         return;
       }
@@ -1584,6 +1710,7 @@ function watchBedrockAndRestore() {
         clearInterval(timer);
         closeBedrockHubWindow();
         stopBedrockFpsMonitor();
+        postCloseRepair();
         restoreLauncherAfterGame();
         return;
       }
@@ -1592,12 +1719,14 @@ function watchBedrockAndRestore() {
         clearInterval(timer);
         closeBedrockHubWindow();
         stopBedrockFpsMonitor();
+        postCloseRepair();
         restoreLauncherAfterGame();
       }
     } catch (_) {
       clearInterval(timer);
       closeBedrockHubWindow();
       stopBedrockFpsMonitor();
+      postCloseRepair();
       restoreLauncherAfterGame();
     }
   }, 2000);
@@ -5019,6 +5148,15 @@ ipcMain.handle('bedrock:integrityBaselineCapture', async () => {
   }
 });
 
+ipcMain.handle('bedrock:modsBaselineCapture', async () => {
+  try {
+    const baseline = captureBedrockModsBaseline();
+    return { ok: true, baseline };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
 ipcMain.handle('bedrock:integrityRepair', async (_e, payload) => {
   try {
     return await bedrockIntegrityRepair(Array.isArray(payload?.paths) ? payload.paths : []);
@@ -5036,6 +5174,14 @@ ipcMain.handle('bedrock:launch', async () => {
   try {
     bedrockLogPath = appendBedrockLaunchLog('INFO: Bedrock launch requested');
     if (bedrockLogPath) sendMcState('logpath', { logDir: path.dirname(bedrockLogPath), logPath: bedrockLogPath });
+
+    // Mods baseline restore: enforce clean DLL set before every launch.
+    try {
+      const modsRepair = restoreBedrockModsBaseline();
+      appendBedrockLaunchLog(`INFO: mods_baseline_repair=${JSON.stringify(modsRepair)}`);
+    } catch (e) {
+      appendBedrockLaunchLog(`WARN: mods_baseline_repair_failed=${String(e?.message || e)}`);
+    }
 
     // Integrity guard: auto-repair/quarantine before every launch.
     let integrity = await bedrockIntegrityCheck();
