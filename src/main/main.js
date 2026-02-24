@@ -4972,20 +4972,28 @@ ipcMain.handle('bedrock:launch', async () => {
     bedrockLogPath = appendBedrockLaunchLog('INFO: Bedrock launch requested');
     if (bedrockLogPath) sendMcState('logpath', { logDir: path.dirname(bedrockLogPath), logPath: bedrockLogPath });
 
-    // Integrity guard: detect and block known Store DLL tampering before launch.
-    const integrity = await bedrockIntegrityCheck();
+    // Integrity guard: auto-repair/quarantine before every launch.
+    let integrity = await bedrockIntegrityCheck();
     appendBedrockLaunchLog(`INFO: integrity=${JSON.stringify(integrity)}`);
     if (!integrity?.ok) {
       const toRepair = (integrity.mismatches || []).map(x => x.path).filter(Boolean);
       const repair = await bedrockIntegrityRepair(toRepair);
       appendBedrockLaunchLog(`WARN: integrity_repair=${JSON.stringify(repair)}`);
-      return {
-        ok: false,
-        error: 'Обнаружены изменения системных файлов Bedrock/Store. Запущено восстановление (подтверди UAC), затем запусти игру повторно.',
-        integrity,
-        repair,
-        logPath: bedrockLogPath || ''
-      };
+
+      // Re-check immediately: user-space suspicious files can be auto-quarantined in same run.
+      const integrityAfter = await bedrockIntegrityCheck();
+      appendBedrockLaunchLog(`INFO: integrity_after_repair=${JSON.stringify(integrityAfter)}`);
+      integrity = integrityAfter;
+
+      if (!integrityAfter?.ok) {
+        return {
+          ok: false,
+          error: 'Обнаружены изменения системных/критичных файлов. Запущено восстановление (подтверди UAC), затем запусти игру повторно.',
+          integrity,
+          repair,
+          logPath: bedrockLogPath || ''
+        };
+      }
     }
 
     // Preflight checks before launch
