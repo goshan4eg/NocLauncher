@@ -17,3 +17,19 @@ window.addEventListener('mousemove', (e) => {
   const y = (window.innerHeight / 2 - e.clientY) / depth;
   parallax.style.transform = `translate(${x}px, ${y}px)`;
 });
+
+const petalsWrap = document.querySelector('.petals');
+if (petalsWrap) {
+  const count = Math.min(26, Math.max(12, Math.floor(window.innerWidth / 70)));
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('span');
+    p.className = 'petal';
+    p.style.left = `${Math.random() * 100}vw`;
+    p.style.setProperty('--size', `${14 + Math.random() * 26}px`);
+    p.style.setProperty('--dur', `${10 + Math.random() * 14}s`);
+    p.style.setProperty('--drift', `${-90 + Math.random() * 180}px`);
+    p.style.setProperty('--alpha', `${0.2 + Math.random() * 0.45}`);
+    p.style.animationDelay = `${-Math.random() * 20}s`;
+    petalsWrap.appendChild(p);
+  }
+}

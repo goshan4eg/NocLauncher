@@ -12,8 +12,19 @@ body {
   margin: 0;
   font-family: 'Manrope', sans-serif;
   color: var(--text);
-  background: radial-gradient(circle at 20% 20%, #113126 0%, var(--bg) 45%), var(--bg);
+  background:
+    linear-gradient(rgba(6, 13, 11, 0.72), rgba(6, 13, 11, 0.86)),
+    url('assets/zv.png') center/cover fixed no-repeat;
   overflow-x: hidden;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(circle at 20% 20%, rgba(77,255,159,0.13), transparent 45%);
+  z-index: -1;
 }
 .bg-orb {
   position: fixed; border-radius: 50%; filter: blur(80px); z-index: -1; opacity: .35;
@@ -21,6 +32,30 @@ body {
 .orb-1 { width: 360px; height: 360px; background: #2cff9f; top: -80px; left: -100px; animation: float 10s ease-in-out infinite; }
 .orb-2 { width: 320px; height: 320px; background: #00c37a; bottom: -120px; right: -80px; animation: float 13s ease-in-out infinite reverse; }
 @keyframes float { 50% { transform: translateY(18px) translateX(10px); } }
+
+.petals {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 2;
+}
+
+.petal {
+  position: absolute;
+  top: -10vh;
+  width: var(--size, 20px);
+  height: var(--size, 20px);
+  background: url('assets/pip.png') center/contain no-repeat;
+  opacity: var(--alpha, .35);
+  animation: petal-fall var(--dur, 16s) linear infinite;
+  filter: drop-shadow(0 4px 12px rgba(0,0,0,.35));
+}
+
+@keyframes petal-fall {
+  0% { transform: translate3d(0, -8vh, 0) rotate(0deg); }
+  100% { transform: translate3d(var(--drift, 60px), 110vh, 0) rotate(280deg); }
+}
 
 .topbar {
   position: sticky; top: 0; z-index: 50;
