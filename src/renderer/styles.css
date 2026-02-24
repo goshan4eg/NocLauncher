@@ -602,7 +602,7 @@ body.mode-bedrock .bedrockOnlyTop{ display: inline-flex; align-items: center; }
 .heroBg{
   position: absolute;
   inset: 0;
-  background-image: image-set(url("img/hero.png") 1x, url("img/hero.jpg") 2x);
+  background-image: url("img/hero.png");
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
