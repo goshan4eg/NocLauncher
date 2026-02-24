@@ -69,6 +69,7 @@ modsList: () => ipcRenderer.invoke('mods:list'),
 
   bedrockCheck: () => ipcRenderer.invoke('bedrock:check'),
   bedrockIntegrityCheck: () => ipcRenderer.invoke('bedrock:integrityCheck'),
+  bedrockIntegrityBaselineCapture: () => ipcRenderer.invoke('bedrock:integrityBaselineCapture'),
   bedrockIntegrityRepair: (paths) => ipcRenderer.invoke('bedrock:integrityRepair', { paths }),
   bedrockLaunch: () => ipcRenderer.invoke('bedrock:launch'),
   bedrockHubOpen: () => ipcRenderer.invoke('bedrock:hubOpen'),

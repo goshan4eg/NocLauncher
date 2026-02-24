@@ -501,13 +501,84 @@ function bedrockIntegrityTargets() {
   return list.filter(p => fs.existsSync(p));
 }
 
-function captureBedrockIntegrityBaseline() {
-  const targets = bedrockIntegrityTargets();
-  const files = {};
-  for (const p of targets) {
-    try { files[p] = sha256FileSync(p); } catch (_) {}
+function bedrockSuspiciousInjectionNames() {
+  return [
+    'onlinefix64.dll',
+    'onlinefix.ini',
+    'dlllist.txt',
+    'winmm.dll',
+    'version.dll',
+    'dxgi.dll',
+    'd3d11.dll'
+  ];
+}
+
+function bedrockIntegrityRoots() {
+  const roots = [];
+  try {
+    const pkgDir = resolveBedrockPackageDir();
+    if (pkgDir) {
+      const content = path.join(pkgDir, 'LocalState');
+      if (fs.existsSync(content)) roots.push(content);
+    }
+  } catch (_) {}
+
+  try {
+    const p = bedrockPaths();
+    if (p?.comMojang && fs.existsSync(p.comMojang)) roots.push(p.comMojang);
+    if (p?.sharedComMojang && fs.existsSync(p.sharedComMojang)) roots.push(p.sharedComMojang);
+  } catch (_) {}
+
+  return Array.from(new Set(roots));
+}
+
+function listBedrockInterestingFiles(roots = []) {
+  const out = [];
+  const exts = new Set(['.dll', '.ini', '.txt', '.exe']);
+  const skipDirs = new Set(['minecraftworlds', 'resource_packs', 'behavior_packs', 'skin_packs', 'cache']);
+
+  function walk(dir, depth = 0) {
+    if (!dir || !fs.existsSync(dir) || depth > 4) return;
+    let entries = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch (_) { return; }
+    for (const e of entries) {
+      const fp = path.join(dir, e.name);
+      if (e.isDirectory()) {
+        if (skipDirs.has(String(e.name || '').toLowerCase())) continue;
+        walk(fp, depth + 1);
+        continue;
+      }
+      if (!e.isFile()) continue;
+      const ext = path.extname(e.name || '').toLowerCase();
+      if (!exts.has(ext)) continue;
+      out.push(fp);
+    }
   }
-  const out = { createdAt: Date.now(), files };
+
+  for (const r of roots) walk(r, 0);
+  return out;
+}
+
+function captureBedrockIntegrityBaseline() {
+  const systemTargets = bedrockIntegrityTargets();
+  const roots = bedrockIntegrityRoots();
+  const files = {};
+
+  for (const p of systemTargets) {
+    try {
+      const st = fs.statSync(p);
+      files[p] = { sha256: sha256FileSync(p), size: st.size, mtimeMs: st.mtimeMs };
+    } catch (_) {}
+  }
+
+  for (const p of listBedrockInterestingFiles(roots)) {
+    try {
+      const st = fs.statSync(p);
+      files[p] = { sha256: sha256FileSync(p), size: st.size, mtimeMs: st.mtimeMs };
+    } catch (_) {}
+  }
+
+  const out = { createdAt: Date.now(), roots, files };
   if (Object.keys(files).length) store.set('bedrockIntegrityBaseline', out);
   return out;
 }
@@ -516,6 +587,25 @@ function readBedrockIntegrityBaseline() {
   const b = store.get('bedrockIntegrityBaseline');
   if (b && typeof b === 'object' && b.files && typeof b.files === 'object') return b;
   return null;
+}
+
+function isSystemProtectedPath(p) {
+  const s = String(p || '').toLowerCase();
+  const win = String(process.env.WINDIR || 'C:\\Windows').toLowerCase();
+  return s.startsWith(path.join(win, 'system32').toLowerCase()) || s.startsWith(path.join(win, 'syswow64').toLowerCase());
+}
+
+function bedrockQuarantineFile(filePath) {
+  try {
+    const base = path.join(app.getPath('userData'), 'quarantine', 'bedrock');
+    fs.mkdirSync(base, { recursive: true });
+    const name = `${Date.now()}_${path.basename(filePath)}`;
+    const dest = path.join(base, name);
+    fs.renameSync(filePath, dest);
+    return { ok: true, movedTo: dest };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
 }
 
 async function bedrockIntegrityCheck() {
@@ -529,20 +619,38 @@ async function bedrockIntegrityCheck() {
 
   const mismatches = [];
   const checked = [];
+
+  // 1) validate baseline-known files
   for (const p of Object.keys(baseline.files || {})) {
     try {
+      const expected = baseline.files[p] || {};
       if (!fs.existsSync(p)) {
-        mismatches.push({ path: p, reason: 'missing' });
+        mismatches.push({ path: p, reason: 'missing', expected });
         checked.push({ path: p, exists: false });
         continue;
       }
-      const actual = sha256FileSync(p);
-      const expected = String(baseline.files[p] || '').toLowerCase();
-      const ok = actual.toLowerCase() === expected;
-      checked.push({ path: p, exists: true, ok, actual, expected });
-      if (!ok) mismatches.push({ path: p, reason: 'hash_mismatch', actual, expected });
+      const actualHash = sha256FileSync(p);
+      const expectedHash = String(expected.sha256 || expected || '').toLowerCase();
+      const ok = !!expectedHash && actualHash.toLowerCase() === expectedHash;
+      checked.push({ path: p, exists: true, ok, actual: actualHash, expected: expectedHash });
+      if (!ok) mismatches.push({ path: p, reason: 'hash_mismatch', actual: actualHash, expected: expectedHash });
     } catch (e) {
       mismatches.push({ path: p, reason: 'read_failed', error: String(e?.message || e) });
+    }
+  }
+
+  // 2) detect suspicious new files under roots
+  const roots = Array.isArray(baseline.roots) && baseline.roots.length ? baseline.roots : bedrockIntegrityRoots();
+  const suspiciousNames = new Set(bedrockSuspiciousInjectionNames());
+  const currentInteresting = listBedrockInterestingFiles(roots);
+  const baselineMap = baseline.files || {};
+  for (const p of currentInteresting) {
+    const key = String(p);
+    const baseEntry = baselineMap[key];
+    const bn = path.basename(p).toLowerCase();
+    if (!baseEntry && suspiciousNames.has(bn)) {
+      mismatches.push({ path: p, reason: 'unexpected_suspicious_file', name: bn });
+      checked.push({ path: p, exists: true, ok: false, unexpected: true, suspicious: true });
     }
   }
 
@@ -560,16 +668,44 @@ async function bedrockIntegrityRepair(paths = []) {
   const uniq = Array.from(new Set((paths || []).filter(Boolean)));
   if (!uniq.length) return { ok: false, error: 'nothing_to_repair' };
 
-  const inner = uniq
-    .map(p => `sfc /scanfile=\"${String(p).replace(/\"/g, '\\\"')}\"`)
-    .join('; ');
-  const cmd = `Start-Process -FilePath powershell -Verb RunAs -WindowStyle Normal -ArgumentList '-NoProfile','-Command','${inner.replace(/'/g, "''")}'`;
-  try {
-    await runPowerShellAsync(cmd);
-    return { ok: true, started: true, paths: uniq };
-  } catch (e) {
-    return { ok: false, error: String(e?.message || e), paths: uniq };
+  const repairedSystem = [];
+  const quarantined = [];
+  const failed = [];
+
+  const sysTargets = uniq.filter(isSystemProtectedPath);
+  const userTargets = uniq.filter(p => !isSystemProtectedPath(p));
+
+  if (sysTargets.length) {
+    const inner = sysTargets
+      .map(p => `sfc /scanfile=\"${String(p).replace(/\"/g, '\\\"')}\"`)
+      .join('; ');
+    const cmd = `Start-Process -FilePath powershell -Verb RunAs -WindowStyle Normal -ArgumentList '-NoProfile','-Command','${inner.replace(/'/g, "''")}'`;
+    try {
+      await runPowerShellAsync(cmd);
+      repairedSystem.push(...sysTargets);
+    } catch (e) {
+      failed.push({ path: '(system_batch)', error: String(e?.message || e) });
+    }
   }
+
+  for (const p of userTargets) {
+    try {
+      if (!fs.existsSync(p)) continue;
+      const q = bedrockQuarantineFile(p);
+      if (q.ok) quarantined.push({ path: p, movedTo: q.movedTo });
+      else failed.push({ path: p, error: q.error || 'quarantine_failed' });
+    } catch (e) {
+      failed.push({ path: p, error: String(e?.message || e) });
+    }
+  }
+
+  return {
+    ok: failed.length === 0,
+    repairedSystem,
+    quarantined,
+    failed,
+    paths: uniq
+  };
 }
 
 const Store = require('electron-store');
@@ -4765,6 +4901,15 @@ ipcMain.handle('bedrock:check', async () => {
 ipcMain.handle('bedrock:integrityCheck', async () => {
   try {
     return await bedrockIntegrityCheck();
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('bedrock:integrityBaselineCapture', async () => {
+  try {
+    const baseline = captureBedrockIntegrityBaseline();
+    return { ok: true, baseline };
   } catch (e) {
     return { ok: false, error: String(e?.message || e) };
   }
