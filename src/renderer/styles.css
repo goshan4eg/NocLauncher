@@ -286,19 +286,20 @@ textarea.ta{
 .sbBrand{
   display:flex;
   align-items:center;
-  gap: 10px;
-  padding: 8px 8px;
+  gap: 8px;
+  padding: 6px 8px;
+  min-height: 64px;
   border-radius: 14px;
   background: rgba(120,235,186,.08);
   border: 1px solid var(--border2);
 }
 .sbLogo{
-  width: 36px;
-  height: 36px;
-  border-radius: 11px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.26);
-  box-shadow: 0 10px 20px rgba(48,148,94,.30), inset 0 1px 0 rgba(255,255,255,.20);
+  box-shadow: 0 8px 16px rgba(48,148,94,.30), inset 0 1px 0 rgba(255,255,255,.20);
   background: rgba(20,80,58,.9);
 }
 .sbLogo img{
@@ -308,8 +309,8 @@ textarea.ta{
   display: block;
 }
 .sbBrandTxt{ min-width: 0; }
-.sbName{ font-weight: 900; letter-spacing: .2px; }
-.sbSub{ color: var(--muted2); font-size: 12px; margin-top: 1px; }
+.sbName{ font-weight: 900; letter-spacing: .2px; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sbSub{ color: var(--muted2); font-size: 11px; margin-top: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .profileField{ background: rgba(0,0,0,.18); }
 
