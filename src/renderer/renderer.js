@@ -2544,9 +2544,11 @@ function wireUI() {
   $('#btnCloseProfiles')?.addEventListener('click', () => closeModal('modalProfiles'));
   $('#btnBedrockVersions')?.addEventListener('click', async () => {
     try {
-      const r = await window.noc?.bedrockVersionToolOpen?.();
+      const pick = (window.prompt('Выбери режим:\n1 — Новые версии\n2 — Старые версии', '1') || '').trim();
+      const mode = pick === '2' ? 'old' : 'new';
+      const r = await window.noc?.bedrockVersionToolOpen?.(mode);
       if (r?.ok) {
-        setStatus('Открыт Minecraft Version Downloader');
+        setStatus(mode === 'old' ? 'Открыт загрузчик старых версий' : 'Открыт загрузчик новых версий');
         return;
       }
     } catch (_) {}
