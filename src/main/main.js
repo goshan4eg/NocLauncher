@@ -513,6 +513,11 @@ function bedrockSuspiciousInjectionNames() {
   ];
 }
 
+function isBedrockSuspiciousName(filePathOrName) {
+  const bn = path.basename(String(filePathOrName || '')).toLowerCase();
+  return bedrockSuspiciousInjectionNames().includes(bn);
+}
+
 function bedrockIntegrityRoots() {
   const roots = [];
   try {
@@ -573,6 +578,9 @@ function captureBedrockIntegrityBaseline() {
 
   for (const p of listBedrockInterestingFiles(roots)) {
     try {
+      // Do not baseline normal mutable Bedrock files (options/logs/etc).
+      // Track only known suspicious injection filenames.
+      if (!isBedrockSuspiciousName(p)) continue;
       const st = fs.statSync(p);
       files[p] = { sha256: sha256FileSync(p), size: st.size, mtimeMs: st.mtimeMs };
     } catch (_) {}
@@ -646,6 +654,10 @@ async function bedrockIntegrityCheck() {
   // 1) validate baseline-known files
   for (const p of Object.keys(baseline.files || {})) {
     try {
+      // Legacy baseline entries may contain mutable files (options.txt, logs).
+      // Enforce hash only for system-protected targets and known suspicious filenames.
+      if (!isSystemProtectedPath(p) && !isBedrockSuspiciousName(p)) continue;
+
       const expected = baseline.files[p] || {};
       if (!fs.existsSync(p)) {
         mismatches.push({ path: p, reason: 'missing', expected });
