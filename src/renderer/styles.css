@@ -398,7 +398,7 @@ textarea.ta{
   align-items: center;
   justify-content: center;
   transition: transform 140ms var(--ease), box-shadow 140ms var(--ease), border-color 140ms var(--ease);
-  animation: javaCardPan 10s ease-in-out infinite alternate;
+  animation: none;
 }
 #modeJava::before{
   content: "";
@@ -411,7 +411,7 @@ textarea.ta{
   background-repeat: no-repeat, repeat;
   background-position: center, 0 0;
   opacity: .96;
-  animation: cardPetalDrift 14s linear infinite;
+  animation: none;
   pointer-events: none;
 }
 #modeJava::after{
@@ -463,7 +463,7 @@ textarea.ta{
   align-items: center;
   justify-content: center;
   transition: transform 140ms var(--ease), box-shadow 140ms var(--ease), border-color 140ms var(--ease);
-  animation: bedrockCardPan 11s ease-in-out infinite alternate;
+  animation: none;
 }
 #modeBedrock::before{
   content: "";
@@ -476,7 +476,7 @@ textarea.ta{
   background-repeat: no-repeat, repeat;
   background-position: center, 0 0;
   opacity: .92;
-  animation: cardPetalDrift 16s linear infinite reverse;
+  animation: none;
   pointer-events: none;
 }
 #modeBedrock::after{
