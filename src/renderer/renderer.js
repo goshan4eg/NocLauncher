@@ -2539,9 +2539,9 @@ function wireUI() {
   $('#btnCloseProfiles')?.addEventListener('click', () => closeModal('modalProfiles'));
   $('#btnBedrockVersions')?.addEventListener('click', async () => {
     try {
-      const r = await window.noc?.bedrockVersionToolOpen?.('new');
+      const r = await window.noc?.bedrockVersionToolOpen?.('new', 'version');
       if (r?.ok) {
-        setStatus('Открыт загрузчик новых версий');
+        setStatus('Открыт загрузчик версий');
         return;
       }
     } catch (_) {}
@@ -2570,7 +2570,7 @@ function wireUI() {
 
   $('#btnVersionToolNew')?.addEventListener('click', async () => {
     try {
-      const r = await window.noc?.bedrockVersionToolOpen?.('new');
+      const r = await window.noc?.bedrockVersionToolOpen?.('new', 'instrumente');
       if (r?.ok) setStatus('Открыт загрузчик новых версий');
       else setStatus('Не удалось открыть загрузчик новых версий');
     } catch (_) {
@@ -2581,7 +2581,7 @@ function wireUI() {
 
   $('#btnVersionToolOld')?.addEventListener('click', async () => {
     try {
-      const r = await window.noc?.bedrockVersionToolOpen?.('old');
+      const r = await window.noc?.bedrockVersionToolOpen?.('old', 'instrumente');
       if (r?.ok) setStatus('Открыт загрузчик старых версий');
       else setStatus('Не удалось открыть загрузчик старых версий');
     } catch (_) {

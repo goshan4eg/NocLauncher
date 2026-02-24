@@ -5037,27 +5037,50 @@ ipcMain.handle('instrumente:open', async () => {
 ipcMain.handle('bedrock:versionToolOpen', async (_e, payload) => {
   try {
     const mode = String(payload?.mode || 'new').toLowerCase(); // new | old
-    const roots = [
-      path.join(APP_ROOT, 'instrumente'),
-      path.join(process.resourcesPath, 'instrumente')
+    const source = String(payload?.source || 'version').toLowerCase(); // version | instrumente
+
+    if (source === 'instrumente') {
+      const roots = [
+        path.join(APP_ROOT, 'instrumente'),
+        path.join(process.resourcesPath, 'instrumente')
+      ];
+      const root = roots.find(p => fs.existsSync(p));
+      if (!root) return { ok: false, error: 'instrumente_not_found' };
+
+      const newExe = path.join(root, 'NocLauncher.exe');
+      const oldExe = path.join(root, 'intrumente2', 'NocLauncher.exe');
+      const preferred = mode === 'old' ? oldExe : newExe;
+      const fallback = mode === 'old' ? newExe : oldExe;
+      const exePath = fs.existsSync(preferred) ? preferred : (fs.existsSync(fallback) ? fallback : '');
+
+      if (!exePath) {
+        await shell.openPath(root);
+        return { ok: false, error: 'version_tool_exe_not_found', path: root };
+      }
+
+      const openErr = await shell.openPath(exePath);
+      if (openErr) return { ok: false, error: `version_tool_launch_failed: ${openErr}`, exe: exePath, mode, source };
+      return { ok: true, launched: true, exe: exePath, mode, source };
+    }
+
+    const candidates = [
+      path.join(APP_ROOT, 'Version'),
+      path.join(process.resourcesPath, 'Version')
     ];
-    const root = roots.find(p => fs.existsSync(p));
-    if (!root) return { ok: false, error: 'instrumente_not_found' };
+    const dir = candidates.find(p => fs.existsSync(p));
+    if (!dir) return { ok: false, error: 'version_tool_dir_not_found' };
 
-    const newExe = path.join(root, 'NocLauncher.exe');
-    const oldExe = path.join(root, 'intrumente2', 'NocLauncher.exe');
-    const preferred = mode === 'old' ? oldExe : newExe;
-    const fallback = mode === 'old' ? newExe : oldExe;
+    const preferred = path.join(dir, 'NocLauncher.exe');
+    const fallback = path.join(dir, 'MCLauncher.exe');
     const exePath = fs.existsSync(preferred) ? preferred : (fs.existsSync(fallback) ? fallback : '');
-
     if (!exePath) {
-      await shell.openPath(root);
-      return { ok: false, error: 'version_tool_exe_not_found', path: root };
+      await shell.openPath(dir);
+      return { ok: false, error: 'version_tool_exe_not_found', path: dir };
     }
 
     const openErr = await shell.openPath(exePath);
-    if (openErr) return { ok: false, error: `version_tool_launch_failed: ${openErr}`, exe: exePath, mode };
-    return { ok: true, launched: true, exe: exePath, mode };
+    if (openErr) return { ok: false, error: `version_tool_launch_failed: ${openErr}`, exe: exePath, source };
+    return { ok: true, launched: true, exe: exePath, source };
   } catch (e) {
     return { ok: false, error: String(e?.message || e) };
   }

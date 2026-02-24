@@ -96,7 +96,7 @@ modsList: () => ipcRenderer.invoke('mods:list'),
   bedrockManagerSetup: () => ipcRenderer.invoke('bedrock:managerSetup'),
   bedrockManagerOpen: () => ipcRenderer.invoke('bedrock:managerOpen'),
   bedrockVersionsList: () => ipcRenderer.invoke('bedrock:versionsList'),
-  bedrockVersionToolOpen: (mode) => ipcRenderer.invoke('bedrock:versionToolOpen', { mode }),
+  bedrockVersionToolOpen: (mode, source) => ipcRenderer.invoke('bedrock:versionToolOpen', { mode, source }),
   bedrockUninstall: () => ipcRenderer.invoke('bedrock:uninstall'),
 
   // Bedrock content helpers (packs/worlds/skins)
