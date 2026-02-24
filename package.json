@@ -59,6 +59,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "Version",
+        "to": "Version",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "win": {

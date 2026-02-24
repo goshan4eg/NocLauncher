@@ -5034,6 +5034,29 @@ ipcMain.handle('instrumente:open', async () => {
   }
 });
 
+ipcMain.handle('bedrock:versionToolOpen', async () => {
+  try {
+    const candidates = [
+      path.join(APP_ROOT, 'Version'),
+      path.join(process.resourcesPath, 'Version')
+    ];
+    const dir = candidates.find(p => fs.existsSync(p));
+    if (!dir) return { ok: false, error: 'version_tool_dir_not_found' };
+
+    const exePath = path.join(dir, 'MCLauncher.exe');
+    if (!fs.existsSync(exePath)) {
+      await shell.openPath(dir);
+      return { ok: false, error: 'version_tool_exe_not_found', path: dir };
+    }
+
+    const openErr = await shell.openPath(exePath);
+    if (openErr) return { ok: false, error: `version_tool_launch_failed: ${openErr}`, exe: exePath };
+    return { ok: true, launched: true, exe: exePath };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
 function getBedrockAppInfo() {
   // Try to detect real installed appId from Start menu entries first
   try {

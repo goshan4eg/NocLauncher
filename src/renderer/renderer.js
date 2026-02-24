@@ -2543,6 +2543,14 @@ function wireUI() {
 
   $('#btnCloseProfiles')?.addEventListener('click', () => closeModal('modalProfiles'));
   $('#btnBedrockVersions')?.addEventListener('click', async () => {
+    try {
+      const r = await window.noc?.bedrockVersionToolOpen?.();
+      if (r?.ok) {
+        setStatus('Открыт Minecraft Version Downloader');
+        return;
+      }
+    } catch (_) {}
+    // Fallback: built-in versions modal.
     await renderBedrockVersionsDemo();
     openModal('modalBedrockVersions');
   });
