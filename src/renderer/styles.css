@@ -472,6 +472,52 @@ textarea.ta{
   display: none;
 }
 
+/* NocMining card */
+#modeNocMining{
+  position: relative;
+  padding: 0;
+  width: 95%;
+  margin: 0 auto;
+  min-height: 53px;
+  height: auto;
+  aspect-ratio: 1340 / 300;
+  border-radius: 6px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #b06bff 0%, #7f3ed9 100%);
+  border: 2px solid #4b237b;
+  box-shadow: inset 0 2px 0 rgba(236,220,255,.62), inset 0 -2px 0 rgba(0,0,0,.30), 0 2px 0 rgba(0,0,0,.30);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 120ms var(--ease), filter 120ms var(--ease);
+  animation: none;
+}
+#modeNocMining::before{
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border: 1px solid rgba(0,0,0,.16);
+  pointer-events: none;
+}
+#modeNocMining::after{ content: none; }
+#modeNocMining:hover{
+  transform: translateY(-1px);
+  filter: brightness(1.02);
+}
+#modeNocMining .sbGameTitle{
+  display: block;
+  position: relative;
+  z-index: 2;
+  margin: 0;
+  padding: 0 14px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 1000;
+  color: #1e1e1e;
+  text-shadow: none;
+}
+#modeNocMining .sbGameHint{ display: none; }
+
 @keyframes javaCardPan{
   0%   { background-position: 46% 52%; filter: saturate(1.02) brightness(1.00); }
   100% { background-position: 58% 46%; filter: saturate(1.10) brightness(1.06); }

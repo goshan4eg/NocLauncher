@@ -1991,11 +1991,13 @@ function setMode(mode) {
 
   $('#modeJava')?.classList.toggle('active', mode === 'java');
   $('#modeBedrock')?.classList.toggle('active', mode === 'bedrock');
+  $('#modeNocMining')?.classList.remove('active');
   // Update header title + accessibility state
   const ed = $('#editionTitle');
   if (ed) ed.textContent = mode === 'bedrock' ? 'MINECRAFT: ИЗДАНИЕ BEDROCK' : 'MINECRAFT: ИЗДАНИЕ JAVA';
   $('#modeJava')?.setAttribute('aria-selected', mode === 'java' ? 'true' : 'false');
   $('#modeBedrock')?.setAttribute('aria-selected', mode === 'bedrock' ? 'true' : 'false');
+  $('#modeNocMining')?.setAttribute('aria-selected', 'false');
 
 
   // Top tabs are Java-only (Bedrock is a separate game)
@@ -2330,6 +2332,9 @@ function wireUI() {
 
   $('#modeJava')?.addEventListener('click', () => setMode('java'));
   $('#modeBedrock')?.addEventListener('click', () => setMode('bedrock'));
+  $('#modeNocMining')?.addEventListener('click', () => {
+    setStatus('NocMining: скоро. Пока доступно только превью кнопки.');
+  });
 
   $('#btnPickVersion')?.addEventListener('click', async () => {
     setVersionsView('online');
