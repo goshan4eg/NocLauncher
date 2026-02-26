@@ -13,8 +13,8 @@
   <a href="https://github.com/NocCorporation/NocLauncher/releases/latest">
     <img alt="Latest Tag" src="https://img.shields.io/github/v/tag/NocCorporation/NocLauncher?sort=semver&style=flat-square" />
   </a>
-  <a href="https://github.com/NocCorporation/NocLauncher/releases/tag/v1.0.6">
-    <img alt="Downloads Win64" src="https://img.shields.io/badge/dynamic/json?url=https://api.github.com/repos/NocCorporation/NocLauncher/releases/tags/v1.0.6&query=$.assets[3].download_count&label=downloads%20win64&style=flat-square" />
+  <a href="https://github.com/NocCorporation/NocLauncher/releases/latest">
+    <img alt="Downloads All Files" src="https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/NocCorporation/NocLauncher/main/docs/badges/downloads-total.json&style=flat-square" />
   </a>
   <img alt="Platform" src="https://img.shields.io/badge/Platform-Windows-4caf50?style=flat-square" />
   <img alt="License" src="https://img.shields.io/badge/License-MIT-blue?style=flat-square" />
