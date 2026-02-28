@@ -708,6 +708,7 @@ const state = {
   libraryTab: 'mods', // mods | resourcepacks | shaderpacks
   pendingLaunchWatchdog: null,
   lastMcEventTs: 0,
+  lastDownloadTs: 0,
   timeline: [],
   authLog: [],
   lastServerSyncTs: 0,
@@ -1792,17 +1793,28 @@ async function doPlay() {
     state.lastMcEventTs = Date.now();
     state.pendingLaunchWatchdog = setTimeout(async () => {
       const idleMs = Date.now() - (state.lastMcEventTs || 0);
-      if (!state.running || idleMs < 14000) return;
+      const dlIdleMs = Date.now() - (state.lastDownloadTs || 0);
+      if (!state.running || idleMs < 180000) return;
+      // Если есть признаки активной загрузки — не считаем это зависанием.
+      if (state.lastDownloadTs && dlIdleMs < 45000) return;
+
       const log = await window.noc.lastLog();
+      const tail = String(log?.tail || '').toLowerCase();
       const hintEl = document.getElementById('crashHint');
       const tailEl = document.getElementById('crashTail');
       const lp = document.getElementById('crashLogPath');
-      if (hintEl) hintEl.textContent = 'Запуск завис/не дал окна. Нажми переустановку профиля и попробуй снова.';
+      if (hintEl) {
+        if (tail.includes('attempting to download assets') || tail.includes('downloading')) {
+          hintEl.textContent = 'Идёт докачка файлов игры (assets). Подожди ещё немного или смени источник скачивания в настройках.';
+        } else {
+          hintEl.textContent = 'Запуск долго не отвечает. Открыл лог — проверь последние строки и попробуй Repair.';
+        }
+      }
       if (tailEl) tailEl.value = (log?.tail || '').trim();
       if (lp) lp.value = log?.logPath || state.lastLogPath || '';
-      setStatus('Запуск не дал окна — открыл лог');
+      setStatus('Запуск долго отвечает — открыл лог');
       openModal('modalCrash');
-    }, 15000);
+    }, 180000);
   } catch (e) {
     setStatus(`Ошибка запуска: ${e?.message || e}`);
     showDlBox(false);
@@ -3054,6 +3066,7 @@ function wireUI() {
 
   window.noc.onDownload((d) => {
     if (!d || $('#dlBox')?.classList.contains('hidden')) return;
+    state.lastDownloadTs = Date.now();
     const overallPct = (typeof d.overallPercent === 'number') ? d.overallPercent : (d.total ? Math.floor((d.current / d.total) * 100) : 0);
     const pctClamped = Math.max(0, Math.min(100, overallPct));
     if ($('#dlBar')) $('#dlBar').style.width = `${pctClamped}%`;
@@ -3076,12 +3089,20 @@ function wireUI() {
       updateActionButton();
     }
     if (s.state === 'launched') {
+      if (state.pendingLaunchWatchdog) {
+        clearTimeout(state.pendingLaunchWatchdog);
+        state.pendingLaunchWatchdog = null;
+      }
       addTimeline('🎮 Minecraft успешно запущен');
       setStatus('Minecraft запущен');
       setTimeout(() => showDlBox(false), 800);
       updateActionButton();
     }
     if (s.state === 'closed') {
+      if (state.pendingLaunchWatchdog) {
+        clearTimeout(state.pendingLaunchWatchdog);
+        state.pendingLaunchWatchdog = null;
+      }
       const code = (typeof s.code === 'number') ? s.code : null;
       addTimeline(code === 0 ? '🛑 Игра закрыта' : `⚠ Игра закрылась с кодом ${code}`);
       setStatus(code === 0 ? 'Minecraft закрыт' : 'Minecraft закрылся с ошибкой');
@@ -3100,6 +3121,10 @@ function wireUI() {
       }
     }
     if (s.state === 'error') {
+      if (state.pendingLaunchWatchdog) {
+        clearTimeout(state.pendingLaunchWatchdog);
+        state.pendingLaunchWatchdog = null;
+      }
       addTimeline(`❌ Ошибка запуска: ${s.error || 'unknown'}`);
       setStatus(`Ошибка: ${s.error || 'unknown'}`);
       showDlBox(false);
