@@ -851,6 +851,7 @@ body.mode-bedrock .bedrockOnlyTop{ display: inline-flex; align-items: center; }
   display: flex;
   align-items: center;
   justify-content: flex-start;
+  flex-wrap: nowrap;
   gap: 12px;
 }
 
@@ -859,6 +860,7 @@ body.mode-bedrock .bedrockOnlyTop{ display: inline-flex; align-items: center; }
   align-items: center;
   gap: 10px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .versionPill{
@@ -870,8 +872,9 @@ body.mode-bedrock .bedrockOnlyTop{ display: inline-flex; align-items: center; }
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 260px;
-  max-width: 520px;
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: none;
 }
 .chipKey{ color: rgba(255,255,255,.58); font-size: 12px; font-weight: 800; }
 .chipVal{
@@ -897,7 +900,9 @@ body.mode-bedrock .bedrockOnlyTop{ display: inline-flex; align-items: center; }
 /* Custom dropdown (Loader) */
 .bbDropdown{
   position: relative;
-  min-width: 140px;
+  flex: 0 0 180px;
+  min-width: 160px;
+  max-width: 220px;
 }
 
 .bbSelectBtn{
@@ -963,7 +968,7 @@ body.mode-bedrock .bedrockOnlyTop{ display: inline-flex; align-items: center; }
 
 .btnPlay{
   height: 56px;
-  min-width: 260px;
+  min-width: 230px;
   padding: 0 22px;
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(47,191,84,1), rgba(38,168,72,1));
