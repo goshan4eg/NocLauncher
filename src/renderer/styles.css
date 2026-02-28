@@ -790,6 +790,16 @@ body.mode-bedrock .bedrockOnlyTop{ display: inline-flex; align-items: center; }
   background: rgba(0,0,0,.34);
   border: 1px solid rgba(255,255,255,.12);
 }
+.dlHint{
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(255,245,190,.95);
+  background: rgba(255,210,80,.14);
+  border: 1px solid rgba(255,210,80,.35);
+  border-radius: 10px;
+  padding: 6px 10px;
+}
 .dlTop{ display:flex; align-items:center; justify-content:space-between; gap: 10px; }
 .dlLabel{ font-weight: 800; color: rgba(255,255,255,.88); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dlPct{ color: rgba(255,255,255,.80); font-weight: 950; }

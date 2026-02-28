@@ -1580,18 +1580,44 @@ async function collectBedrockLaunchFailureDiagnostics() {
   return out;
 }
 
-// Aggregated install progress (across libs/assets/natives)
-let aggProgress = { totals: {}, currents: {}, lastSent: 0 };
-function resetAggProgress() { aggProgress = { totals: {}, currents: {}, lastSent: 0 }; }
+// Aggregated install progress (weighted by global stages, not single-file bytes)
+let aggProgress = { totals: {}, currents: {}, progressByType: {}, lastSent: 0 };
+function resetAggProgress() { aggProgress = { totals: {}, currents: {}, progressByType: {}, lastSent: 0 }; }
 function updateAggProgress(e, gameDir) {
   if (!e || !e.type) return null;
   const t = String(e.type);
   if (typeof e.total === 'number' && e.total > 0) aggProgress.totals[t] = e.total;
   if (typeof e.current === 'number' && e.current >= 0) aggProgress.currents[t] = e.current;
-  const total = Object.values(aggProgress.totals).reduce((a,b)=>a+b,0);
-  const current = Object.entries(aggProgress.currents).reduce((a,[k,v])=>a+Math.min(v, aggProgress.totals[k]||v),0);
-  const overallPercent = total ? Math.floor((current/total)*100) : 0;
-  return { overallTotal: total, overallCurrent: current, overallPercent, installPath: gameDir };
+
+  const totalForType = Number(aggProgress.totals[t] || 0);
+  const currentForType = Number(aggProgress.currents[t] || 0);
+  if (totalForType > 0) {
+    aggProgress.progressByType[t] = Math.max(0, Math.min(1, currentForType / totalForType));
+  }
+
+  const stageWeights = {
+    client: 1,
+    libraries: 3,
+    assets: 4,
+    natives: 1,
+    logging: 1
+  };
+
+  const seenTypes = Object.keys(aggProgress.progressByType);
+  const totalWeight = seenTypes.reduce((a, k) => a + (stageWeights[k] || 1), 0) || 1;
+  const weighted = seenTypes.reduce((a, k) => a + ((stageWeights[k] || 1) * Number(aggProgress.progressByType[k] || 0)), 0);
+
+  // Cap at 99% until the game actually reports launched/ready.
+  const overallPercent = Math.max(0, Math.min(99, Math.floor((weighted / totalWeight) * 100)));
+  const completedStages = seenTypes.reduce((a, k) => a + ((aggProgress.progressByType[k] || 0) >= 0.999 ? 1 : 0), 0);
+
+  return {
+    overallPercent,
+    overallTasksCurrent: completedStages,
+    overallTasksTotal: Math.max(1, seenTypes.length),
+    activeType: t,
+    installPath: gameDir
+  };
 }
 
 

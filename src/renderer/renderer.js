@@ -939,9 +939,11 @@ function resetProgress() {
   const bar = $('#dlBar');
   const text = $('#dlText');
   const pct = $('#dlPct');
+  const hint = $('#dlHint');
   if (bar) bar.style.width = '0%';
   if (text) text.textContent = '—';
   if (pct) pct.textContent = '0%';
+  if (hint) hint.classList.add('hidden');
 }
 
 function setActionLabel(t) {
@@ -1767,9 +1769,11 @@ async function doPlay() {
     if (!alreadyInstalled) {
       resetProgress();
       showDlBox(true);
+      $('#dlHint')?.classList.remove('hidden');
       setStatus(`Установка ${chosen}…`);
     } else {
       showDlBox(false);
+      $('#dlHint')?.classList.add('hidden');
       setStatus(`Запуск ${chosen}…`);
     }
 
@@ -3069,12 +3073,22 @@ function wireUI() {
     state.lastDownloadTs = Date.now();
     const overallPct = (typeof d.overallPercent === 'number') ? d.overallPercent : (d.total ? Math.floor((d.current / d.total) * 100) : 0);
     const pctClamped = Math.max(0, Math.min(100, overallPct));
+    const tasksCurrent = (typeof d.overallTasksCurrent === 'number') ? d.overallTasksCurrent : null;
+    const tasksTotal = (typeof d.overallTasksTotal === 'number') ? d.overallTasksTotal : null;
+    const stage = d.activeType || d.type || 'download';
+
     if ($('#dlBar')) $('#dlBar').style.width = `${pctClamped}%`;
-    if ($('#dlText')) $('#dlText').textContent = `Установка: ${d.overallCurrent || d.current || 0}/${d.overallTotal || d.total || 0} • ${d.type || 'download'}`;
+    if ($('#dlText')) {
+      if (tasksCurrent !== null && tasksTotal !== null) {
+        $('#dlText').textContent = `Установка: этапы ${tasksCurrent}/${tasksTotal} • ${stage}`;
+      } else {
+        $('#dlText').textContent = `Установка: ${stage}`;
+      }
+    }
     if ($('#dlPct')) $('#dlPct').textContent = `${pctClamped}%`;
     if ($('#dlPath')) $('#dlPath').textContent = `Папка: ${d.installPath || state.settings?.gameDir || '—'}`;
     setStatus(`Установка… ${pctClamped}%`);
-});
+  });
 
   window.noc.onMcState((s) => {
     if (!s) return;
@@ -3095,6 +3109,7 @@ function wireUI() {
       }
       addTimeline('🎮 Minecraft успешно запущен');
       setStatus('Minecraft запущен');
+      $('#dlHint')?.classList.add('hidden');
       setTimeout(() => showDlBox(false), 800);
       updateActionButton();
     }
@@ -3106,6 +3121,7 @@ function wireUI() {
       const code = (typeof s.code === 'number') ? s.code : null;
       addTimeline(code === 0 ? '🛑 Игра закрыта' : `⚠ Игра закрылась с кодом ${code}`);
       setStatus(code === 0 ? 'Minecraft закрыт' : 'Minecraft закрылся с ошибкой');
+      $('#dlHint')?.classList.add('hidden');
       setRunning(false);
       refreshInstallState();
 
@@ -3127,6 +3143,7 @@ function wireUI() {
       }
       addTimeline(`❌ Ошибка запуска: ${s.error || 'unknown'}`);
       setStatus(`Ошибка: ${s.error || 'unknown'}`);
+      $('#dlHint')?.classList.add('hidden');
       showDlBox(false);
       setRunning(false);
       updateActionButton();
