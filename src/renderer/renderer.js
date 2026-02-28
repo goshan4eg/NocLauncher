@@ -1549,13 +1549,22 @@ async function doPlay() {
     const wantOnline = false;
     const loaderMode = $('#loaderMode')?.value || 'vanilla';
 
+    // Мгновенный отклик UI: сразу показываем, что установка/запуск начались.
+    resetProgress();
+    showDlBox(true);
+    $('#dlHint')?.classList.remove('hidden');
+    if ($('#dlText')) $('#dlText').textContent = 'Подготовка запуска…';
+    if ($('#dlPct')) $('#dlPct').textContent = '0%';
+    if ($('#dlBar')) $('#dlBar').style.width = '2%';
+    setStatus(`Подготовка ${requested}…`);
+
     addTimeline(`🚀 Подготовка запуска ${requested} (${loaderMode})`);
-    const hc = await runLaunchHealthCheck(username, requested, loaderMode);
-    if (!hc.ok) {
-      setStatus('Health-check не пройден. Исправь пункты в timeline ниже.');
-      return;
-    }
-    addTimeline('✅ Launch Health: всё готово к старту');
+    runLaunchHealthCheck(username, requested, loaderMode)
+      .then((hc) => {
+        if (hc?.ok) addTimeline('✅ Launch Health: всё готово к старту');
+        else addTimeline('⚠ Launch Health: есть замечания (запуск продолжается)');
+      })
+      .catch(() => addTimeline('⚠ Launch Health: проверка не завершилась, продолжаю запуск'));
 
     let loaderPatch = {};
     if (loaderMode !== 'vanilla') {
@@ -1570,12 +1579,16 @@ async function doPlay() {
       if (skinMode === 'auto' || skinMode === 'nick') {
         const nickForSkin = ($('#skinNick')?.value || username).trim();
         if (nickForSkin) {
-          const rSkin = await window.noc.fetchSkinByNick(nickForSkin);
-          if (rSkin?.ok && rSkin.path) {
-            $('#offlineSkinPath').value = rSkin.path;
-            state.settings = await window.noc.settingsSet({ offlineSkinPath: rSkin.path });
-            addTimeline(`🎨 Скин найден: ${nickForSkin}`);
-          }
+          // Не блокируем старт из-за сети скинов.
+          window.noc.fetchSkinByNick(nickForSkin)
+            .then(async (rSkin) => {
+              if (rSkin?.ok && rSkin.path) {
+                $('#offlineSkinPath').value = rSkin.path;
+                state.settings = await window.noc.settingsSet({ offlineSkinPath: rSkin.path });
+                addTimeline(`🎨 Скин найден: ${nickForSkin}`);
+              }
+            })
+            .catch(() => {});
         }
       }
     }
