@@ -2735,22 +2735,7 @@ function wireUI() {
     }
   });
 
-  $('#btnBedrockWin11Fix')?.addEventListener('click', async () => {
-    setStatus('Bedrock Win11: запускаю быстрый фикс...');
-    const r = await window.noc?.bedrockWin11QuickFix?.();
-    if (!r?.ok) {
-      setStatus(`Bedrock Win11: фикс не удался — ${r?.error || 'unknown'}`);
-      return;
-    }
-    const failed = (r.steps || []).filter(s => !s.ok).length;
-    const total = (r.steps || []).length;
-    setStatus(`Bedrock Win11: готово (${total - failed}/${total} шагов). Обнови Store и перезагрузи ПК.`);
-    try { openModal('modalBedrockMsFix'); } catch (_) {}
-    for (const s of (r.steps || [])) {
-      msFixLog(`${s.ok ? '✅' : '⚠️'} [Win11] ${s.name}${s.error ? ` — ${s.error}` : ''}`);
-    }
-    if (r?.note) msFixLog(r.note);
-  });
+  // Win11 quick-fix button removed by request.
   // Bedrock settings (graphics/options)
   const openBedrockSettings = async () => {
     await renderBedrockOptions();
