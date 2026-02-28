@@ -4150,6 +4150,90 @@ ipcMain.handle('mc:fix', async (_e, payload) => {
   return await runFix(settings, gameDir, versionId);
 });
 
+ipcMain.handle('win11:quickFix', async (_e, payload) => {
+  const settings = store.store;
+  const out = {
+    ok: true,
+    changedGameDir: false,
+    clearedJavaPath: false,
+    gameDir: settings.gameDir,
+    notes: []
+  };
+
+  const isBadDir = (p) => {
+    const s = String(p || '').toLowerCase();
+    return s.includes('\\program files') || s.includes('\\windowsapps') || s.includes('\\onedrive\\desktop');
+  };
+
+  const canWrite = (dir) => {
+    try {
+      ensureDir(dir);
+      const probe = path.join(dir, `.noc_write_test_${Date.now()}.tmp`);
+      fs.writeFileSync(probe, 'ok', 'utf8');
+      fs.unlinkSync(probe);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  // 1) Safe game dir for Windows 11
+  try {
+    const current = String(settings.gameDir || '').trim();
+    if (!current || isBadDir(current) || !canWrite(current)) {
+      const candidates = [
+        'C:\\Games\\NocLauncher',
+        'D:\\Games\\NocLauncher',
+        path.join(os.homedir(), 'Games', 'NocLauncher')
+      ];
+      const picked = candidates.find(canWrite);
+      if (picked) {
+        store.set('gameDir', picked);
+        out.gameDir = picked;
+        out.changedGameDir = true;
+        out.notes.push(`Папка игры: ${picked}`);
+      } else {
+        out.ok = false;
+        out.notes.push('Не удалось подобрать папку с правами записи');
+      }
+    }
+  } catch (e) {
+    out.ok = false;
+    out.notes.push(`Ошибка выбора папки: ${String(e?.message || e)}`);
+  }
+
+  // 2) Always reset manual Java path to auto runtime
+  try {
+    if (String(settings.javaPath || '').trim()) {
+      store.set('javaPath', '');
+      out.clearedJavaPath = true;
+      out.notes.push('Java Path очищен (авторежим)');
+    }
+  } catch (_) {}
+
+  // 3) Stable download defaults for Win11
+  try {
+    store.set('downloadSource', 'auto');
+    store.set('mirrorFallback', true);
+  } catch (_) {}
+
+  // 4) Optional repair pass
+  if (payload?.runFix !== false) {
+    try {
+      const fresh = store.store;
+      const gameDir = resolveActiveGameDir(fresh);
+      const versionId = payload?.version || fresh.lastVersion || 'latest-release';
+      await runFix(fresh, gameDir, versionId);
+      out.notes.push(`Быстрый фикс применён для ${versionId}`);
+    } catch (e) {
+      out.ok = false;
+      out.notes.push(`Fix ошибка: ${String(e?.message || e)}`);
+    }
+  }
+
+  return out;
+});
+
 ipcMain.handle('snapshots:create', async (_e, note) => {
   const settings = store.store;
   const gameDir = resolveActiveGameDir(settings);

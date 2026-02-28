@@ -3268,9 +3268,15 @@ $('#btnRepair')?.addEventListener('click', async () => {
 
 $('#btnFix')?.addEventListener('click', async () => {
   try {
-    setStatus('Исправление...');
-    await window.noc.mcFix({ version: state.settings?.lastVersion });
-    setStatus('Исправлено');
+    setStatus('Быстрый фикс Win11...');
+    const quick = await window.noc.win11QuickFix({ version: state.settings?.lastVersion, runFix: true });
+    await loadSettings();
+    if (quick?.ok) {
+      const notes = Array.isArray(quick?.notes) ? quick.notes : [];
+      setStatus(notes.length ? `Исправлено: ${notes[notes.length - 1]}` : 'Исправлено');
+    } else {
+      setStatus(`Fix: ${(quick?.notes || []).join('; ') || 'ошибка'}`);
+    }
   } catch (e) { setStatus(`Fix: ${e?.message || e}`); }
 });
 
