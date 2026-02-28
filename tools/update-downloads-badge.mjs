@@ -45,7 +45,7 @@ const latestTotal = latest
 
 const allBadge = {
   schemaVersion: 1,
-  label: 'downloads',
+  label: 'download',
   message: String(totalAllReleases),
   color: '0e9f6e',
   namedLogo: 'github'
@@ -60,7 +60,7 @@ const latestBadge = {
 };
 
 await fs.mkdir('docs/badges', { recursive: true });
-await fs.writeFile('docs/badges/downloads-total.json', JSON.stringify(allBadge, null, 2) + '\n', 'utf8');
+await fs.writeFile('docs/badges/downloads-total-v2.json', JSON.stringify(allBadge, null, 2) + '\n', 'utf8');
 await fs.writeFile('docs/badges/downloads-latest.json', JSON.stringify(latestBadge, null, 2) + '\n', 'utf8');
 
 console.log(`Updated badges: all=${totalAllReleases}, latest=${latestTotal}, releases=${releases.length}`);
