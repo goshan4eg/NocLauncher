@@ -6040,9 +6040,11 @@ ipcMain.handle('bedrock:launch', async () => {
     // This restores old stable behavior and avoids fragile app-window heuristics.
     let launched = false;
     let simpleLaunchIssued = false;
+    let localExeFound = false;
     try {
       const localExe = findBestLocalBedrockExe();
       if (localExe) {
+        localExeFound = true;
         appendBedrockLaunchLog(`INFO: simple_local_detect exe=${localExe}`);
         const localDir = path.dirname(localExe);
         try {
@@ -6066,6 +6068,23 @@ ipcMain.handle('bedrock:launch', async () => {
       }
     } catch (e) {
       appendBedrockLaunchLog(`WARN: simple_local_detect_failed err=${String(e?.message || e)}`);
+    }
+
+    // User-requested behavior: if game is not detected locally, redirect to Store.
+    if (!localExeFound && !pf?.details?.minecraftInstalled) {
+      try {
+        appendBedrockLaunchLog('WARN: game_not_detected_local_or_appx -> redirect_store');
+        await shell.openExternal('ms-windows-store://pdp/?PFN=Microsoft.MinecraftUWP_8wekyb3d8bbwe');
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: redirect_store_failed=${String(e?.message || e)}`);
+      }
+      restoreLauncherAfterGame();
+      return {
+        ok: false,
+        redirectedToStore: true,
+        error: 'Игра не обнаружена на ПК. Открыт Microsoft Store для установки.',
+        logPath: bedrockLogPath || ''
+      };
     }
 
     // Launch Bedrock first; hide launcher only after confirmed start.
