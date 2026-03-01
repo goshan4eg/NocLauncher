@@ -45,12 +45,9 @@
 }
 
 *{ box-sizing: border-box; }
-html, body{ height: 100%; margin: 0; }
+html, body{ height: 100%; margin: 0; background: transparent !important; }
 body{
-  background:
-    radial-gradient(1200px 700px at 20% -10%, rgba(255,170,220,.18), transparent 60%),
-    url("img/zv.png") center / cover no-repeat fixed,
-    var(--bg);
+  background: transparent;
   color: var(--text);
   font-family: var(--font);
   line-height: 1.4;
@@ -66,9 +63,10 @@ body{
 
 #fx{
   position: fixed;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  inset: 8px;
+  width: calc(100% - 16px);
+  height: calc(100% - 16px);
+  border-radius: 20px;
   pointer-events: none;
   opacity: .16;
   filter: saturate(.9) contrast(1.05);
@@ -102,6 +100,9 @@ button:disabled{
   opacity: .55;
   cursor: not-allowed;
 }
+
+/* Keep controls clickable in frameless draggable window */
+button, input, select, textarea, a, .chip, .btn, .btnPrimary, .topPill, .tabBtn { -webkit-app-region: no-drag; }
 
 button:focus-visible,
 input:focus-visible,
@@ -562,6 +563,7 @@ textarea.ta{
   justify-content: space-between;
   gap: 16px;
   padding: 10px 16px;
+  -webkit-app-region: drag;
   border-bottom: 1px solid var(--border2);
   background: linear-gradient(180deg, rgba(0,0,0,.28), rgba(0,0,0,.36)), url("img/zv.png") center / cover no-repeat;
 }
