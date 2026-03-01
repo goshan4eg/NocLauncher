@@ -758,10 +758,10 @@ function ensureBedrockAppRuntimeDlls(installLocation) {
   ];
   const srcBase = srcBaseCandidates.find(p => fs.existsSync(p)) || '';
   if (!srcBase || !installLocation || !fs.existsSync(installLocation)) {
-    return { ok: false, copied, missing: ['vcruntime140_app.dll', 'vcruntime140_1_app.dll', 'msvcp140_app.dll'], reason: 'source_or_install_missing' };
+    return { ok: false, copied, missing: ['concrt140_app.dll', 'vcruntime140_app.dll', 'vcruntime140_1_app.dll', 'msvcp140_app.dll'], reason: 'source_or_install_missing' };
   }
 
-  for (const f of ['vcruntime140_app.dll', 'vcruntime140_1_app.dll', 'msvcp140_app.dll']) {
+  for (const f of ['concrt140_app.dll', 'vcruntime140_app.dll', 'vcruntime140_1_app.dll', 'msvcp140_app.dll']) {
     try {
       const dst = path.join(installLocation, f);
       if (fs.existsSync(dst)) continue;
