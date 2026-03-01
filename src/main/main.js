@@ -692,6 +692,33 @@ async function detectBedrockServerArg() {
   return '';
 }
 
+function ensureBedrockAppRuntimeDlls(installLocation) {
+  const copied = [];
+  const missing = [];
+  const srcBaseCandidates = [
+    'C:\\Windows\\SystemApps\\MicrosoftWindows.Client.CBS_cw5n1h2txyewy',
+    'C:\\Windows\\SystemApps\\Microsoft.EdgeDevtoolsPlugin_cw5n1h2txyewy'
+  ];
+  const srcBase = srcBaseCandidates.find(p => fs.existsSync(p)) || '';
+  if (!srcBase || !installLocation || !fs.existsSync(installLocation)) {
+    return { ok: false, copied, missing: ['vcruntime140_app.dll', 'msvcp140_app.dll'], reason: 'source_or_install_missing' };
+  }
+
+  for (const f of ['vcruntime140_app.dll', 'msvcp140_app.dll']) {
+    try {
+      const dst = path.join(installLocation, f);
+      if (fs.existsSync(dst)) continue;
+      const src = path.join(srcBase, f);
+      if (!fs.existsSync(src)) { missing.push(f); continue; }
+      fs.copyFileSync(src, dst);
+      copied.push(f);
+    } catch (_) {
+      missing.push(f);
+    }
+  }
+  return { ok: true, copied, missing, source: srcBase };
+}
+
 function detectWindowsTag() {
   try {
     if (process.platform !== 'win32') return 'other';
@@ -5981,6 +6008,13 @@ ipcMain.handle('bedrock:launch', async () => {
 
     // First choice: start package exe directly from detected install location (most stable, avoids Store redirects).
     if (installLocation) {
+      try {
+        const rt = ensureBedrockAppRuntimeDlls(installLocation);
+        appendBedrockLaunchLog(`INFO: ensure_app_runtime_dlls=${JSON.stringify(rt)}`);
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: ensure_app_runtime_dlls_failed=${String(e?.message || e)}`);
+      }
+
       const serverArg = await detectBedrockServerArg();
       const exeCandidates = [
         path.join(installLocation, 'Minecraft.Windows.exe'),
