@@ -6039,6 +6039,7 @@ ipcMain.handle('bedrock:launch', async () => {
     // Simple universal path first: detect local installed game exe and start it directly (no args).
     // This restores old stable behavior and avoids fragile app-window heuristics.
     let launched = false;
+    let simpleLaunchIssued = false;
     try {
       const localExe = findBestLocalBedrockExe();
       if (localExe) {
@@ -6050,9 +6051,12 @@ ipcMain.handle('bedrock:launch', async () => {
         } catch (_) {}
 
         try {
-          await execFileAsync('cmd', ['/c', `start "" "${localExe.replace(/"/g, '""')}"`], { windowsHide: true });
-          await new Promise(r => setTimeout(r, 1800));
-          launched = isBedrockRunning();
+          // Minimal guaranteed path: plain Start-Process with working directory, no extra args.
+          await execFileAsync('powershell', ['-NoProfile', '-Command', `Start-Process -FilePath '${localExe.replace(/'/g, "''")}' -WorkingDirectory '${localDir.replace(/'/g, "''")}'`], { windowsHide: true });
+          simpleLaunchIssued = true;
+          appendBedrockLaunchLog('INFO: simple_local_launch_issued=true');
+          await new Promise(r => setTimeout(r, 2500));
+          launched = isBedrockRunning() || simpleLaunchIssued;
           appendBedrockLaunchLog(`INFO: simple_local_launch_result launched=${launched}`);
         } catch (e) {
           appendBedrockLaunchLog(`WARN: simple_local_launch_failed err=${String(e?.message || e)}`);
@@ -6315,6 +6319,11 @@ ipcMain.handle('bedrock:launch', async () => {
           // FPS monitor is manual-only: do not auto-start on Bedrock launch.
           sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
         } else {
+          // Soft handling: on some systems first launch appears with delay.
+          if (simpleLaunchIssued) {
+            appendBedrockLaunchLog('WARN: process_not_detected_after_4s_but_simple_launch_was_issued');
+            return;
+          }
           appendBedrockLaunchLog('ERROR: Bedrock process not detected after 4s');
           const diag = await collectBedrockLaunchFailureDiagnostics();
           appendBedrockLaunchLog(`ERROR: failure-diagnostics=${JSON.stringify(diag)}`);
