@@ -6087,6 +6087,34 @@ ipcMain.handle('bedrock:launch', async () => {
       };
     }
 
+    // Simple AppsFolder launch fallback (no complex orchestration).
+    if (!launched) {
+      try {
+        const appInfo = getBedrockAppInfo();
+        const quickIds = [
+          String(appInfo?.appId || '').trim(),
+          'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App',
+          'MICROSOFT.MINECRAFTUWP_8wekyb3d8bbwe!Game'
+        ].filter(Boolean);
+        for (const appId of quickIds) {
+          try {
+            appendBedrockLaunchLog(`INFO: simple_appsfolder_try appId=${appId}`);
+            await execFileAsync('cmd', ['/c', `start "" "shell:AppsFolder\\${String(appId).replace(/"/g, '""')}"`], { windowsHide: true });
+            await new Promise(r => setTimeout(r, 2200));
+            if (isBedrockRunning()) {
+              launched = true;
+              appendBedrockLaunchLog(`INFO: simple_appsfolder_success appId=${appId}`);
+              break;
+            }
+          } catch (e) {
+            appendBedrockLaunchLog(`WARN: simple_appsfolder_failed appId=${appId} err=${String(e?.message || e)}`);
+          }
+        }
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: simple_appsfolder_block_failed err=${String(e?.message || e)}`);
+      }
+    }
+
     // Launch Bedrock first; hide launcher only after confirmed start.
 
     // Robust direct launch without Store fallback:
