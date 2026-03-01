@@ -661,6 +661,16 @@ async function detectInstalledBedrockVersion() {
   }
 }
 
+function parseBedrockPatchNumber(versionStr) {
+  const p = String(versionStr || '').split('.').map(x => Number(x) || 0);
+  const c = p[2] || 0;
+  const d = p[3] || 0;
+  // Appx versions often encode MC patch like 80.3 as 8003.0
+  // while other builds may appear as 80.3 or 130.0.
+  if (c >= 1000) return c / 100;
+  return c + (d / 10);
+}
+
 function detectWindowsTag() {
   try {
     if (process.platform !== 'win32') return 'other';
@@ -5807,17 +5817,17 @@ ipcMain.handle('bedrock:launch', async () => {
       appendBedrockLaunchLog('WARN: minecraftInstalled=false (continuing without Store redirect by user request)');
     }
 
-    // Detect Bedrock version once and allow replacement flows only for >= 1.21.130.0
+    // Detect Bedrock version once and allow replacement flows only for >= 1.21.130
+    // Supports both plain (1.21.80.3) and Appx-encoded (1.21.8003.0) forms.
     const oldThreshold = '1.21.130.0';
     const installedBedrockVersion = await detectInstalledBedrockVersion();
-    const canRunReplacementFlows = installedBedrockVersion
-      ? (compareVersionLike(installedBedrockVersion, oldThreshold) >= 0)
-      : false;
+    const parsedPatch = parseBedrockPatchNumber(installedBedrockVersion);
+    const canRunReplacementFlows = !!installedBedrockVersion && parsedPatch >= 130;
 
     // Prepare OS-aware protection bundle location (win10/win11 + arch) before integrity flows.
     try {
       const prep = prepareWindowsProtectionRuntime({ profile: 'default' });
-      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, oldThreshold, canRunReplacementFlows })}`);
+      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, parsedPatch, oldThreshold, canRunReplacementFlows })}`);
     } catch (e) {
       appendBedrockLaunchLog(`WARN: protection_runtime_prepare_failed=${String(e?.message || e)}`);
     }
