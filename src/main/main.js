@@ -5817,22 +5817,24 @@ ipcMain.handle('bedrock:launch', async () => {
       appendBedrockLaunchLog('WARN: minecraftInstalled=false (continuing without Store redirect by user request)');
     }
 
-    // Detect Bedrock version once and allow replacement flows only for >= 1.21.130
+    // Detect Bedrock version once and choose replacement profile:
+    // < 1.21.130 -> old profile, >= 1.21.130 -> default profile.
     // Supports both plain (1.21.80.3) and Appx-encoded (1.21.8003.0) forms.
     const oldThreshold = '1.21.130.0';
     const installedBedrockVersion = await detectInstalledBedrockVersion();
     const parsedPatch = parseBedrockPatchNumber(installedBedrockVersion);
-    const canRunReplacementFlows = !!installedBedrockVersion && parsedPatch >= 130;
+    const isOldVersion = !!installedBedrockVersion && parsedPatch < 130;
+    const selectedProfile = isOldVersion ? 'old' : 'default';
 
     // Prepare OS-aware protection bundle location (win10/win11 + arch) before integrity flows.
     try {
-      const prep = prepareWindowsProtectionRuntime({ profile: 'default' });
-      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, parsedPatch, oldThreshold, canRunReplacementFlows })}`);
+      const prep = prepareWindowsProtectionRuntime({ profile: selectedProfile });
+      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, parsedPatch, oldThreshold, isOldVersion, selectedProfile })}`);
     } catch (e) {
       appendBedrockLaunchLog(`WARN: protection_runtime_prepare_failed=${String(e?.message || e)}`);
     }
 
-    if (canRunReplacementFlows) {
+    {
       // Mods baseline restore: enforce clean DLL set before every launch.
       try {
         const modsRepair = restoreBedrockModsBaseline();
@@ -5893,8 +5895,6 @@ ipcMain.handle('bedrock:launch', async () => {
           appendBedrockLaunchLog(`WARN: continuing launch with unresolved appx-only mismatches=${JSON.stringify(left)}`);
         }
       }
-    } else {
-      appendBedrockLaunchLog(`INFO: replacement_flows_skipped_for_old_version version=${installedBedrockVersion || 'unknown'} threshold=${oldThreshold}`);
     }
 
     // Preflight checks before launch (advisory-only; do not hard-stop launch path)
