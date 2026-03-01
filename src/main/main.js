@@ -671,6 +671,27 @@ function parseBedrockPatchNumber(versionStr) {
   return c + (d / 10);
 }
 
+async function detectBedrockServerArg() {
+  try {
+    const cmd = [
+      "$p = Get-CimInstance Win32_Process | Where-Object { $_.Name -in @('Minecraft.Windows.exe','MinecraftWindowsBeta.exe') } | Select-Object -First 1 CommandLine;",
+      "if(-not $p){''; exit}",
+      "$m = [regex]::Match([string]$p.CommandLine, '-ServerName:\\S+');",
+      "if($m.Success){ $m.Value }"
+    ].join(' ');
+    const found = String(await runPowerShellAsync(cmd) || '').trim();
+    if (found && /^-ServerName:\S+$/i.test(found)) {
+      try { store.set('bedrockLaunchServerArg', found); } catch (_) {}
+      return found;
+    }
+  } catch (_) {}
+  try {
+    const cached = String(store.get('bedrockLaunchServerArg') || '').trim();
+    if (cached && /^-ServerName:\S+$/i.test(cached)) return cached;
+  } catch (_) {}
+  return '';
+}
+
 function detectWindowsTag() {
   try {
     if (process.platform !== 'win32') return 'other';
@@ -5960,6 +5981,7 @@ ipcMain.handle('bedrock:launch', async () => {
 
     // First choice: start package exe directly from detected install location (most stable, avoids Store redirects).
     if (installLocation) {
+      const serverArg = await detectBedrockServerArg();
       const exeCandidates = [
         path.join(installLocation, 'Minecraft.Windows.exe'),
         path.join(installLocation, 'Minecraft.WindowsBeta.exe')
@@ -5967,12 +5989,24 @@ ipcMain.handle('bedrock:launch', async () => {
       for (const exePath of exeCandidates) {
         if (!fs.existsSync(exePath)) continue;
         try {
-          appendBedrockLaunchLog(`INFO: try direct exe=${exePath}`);
-          await execFileAsync(exePath, [], { windowsHide: true });
+          const args = serverArg ? [serverArg] : [];
+          appendBedrockLaunchLog(`INFO: try direct exe=${exePath} args=${JSON.stringify(args)}`);
+          await execFileAsync(exePath, args, { windowsHide: true });
           launched = await waitStarted(4500);
           if (launched) {
             appendBedrockLaunchLog(`INFO: start confirmed after direct exe=${exePath}`);
             break;
+          }
+
+          // second try without argument
+          if (!launched && args.length) {
+            appendBedrockLaunchLog(`INFO: retry direct exe without args path=${exePath}`);
+            await execFileAsync(exePath, [], { windowsHide: true });
+            launched = await waitStarted(3500);
+            if (launched) {
+              appendBedrockLaunchLog(`INFO: start confirmed after direct exe retry path=${exePath}`);
+              break;
+            }
           }
         } catch (e) {
           appendBedrockLaunchLog(`WARN: direct exe failed path=${exePath} err=${String(e?.message || e)}`);
