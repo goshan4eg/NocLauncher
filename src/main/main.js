@@ -5980,22 +5980,10 @@ ipcMain.handle('bedrock:launch', async () => {
       }
     }
 
-    // Fallback: validated AUMIDs only (used only if direct exe launch didn't start process).
+    // AUMID fallback is intentionally disabled to prevent any Store redirects.
+    // We launch only direct local Minecraft executable from detected installLocation.
     if (!launched) {
-      for (const aumid of aumidCandidates) {
-        const appUri = `shell:AppsFolder\\${aumid}`;
-        try {
-          appendBedrockLaunchLog(`INFO: try explorer aumid=${aumid}`);
-          await execFileAsync('explorer.exe', [appUri], { windowsHide: true });
-          launched = await waitStarted(3500);
-          if (launched) {
-            appendBedrockLaunchLog(`INFO: start confirmed after explorer aumid=${aumid}`);
-            break;
-          }
-        } catch (e) {
-          appendBedrockLaunchLog(`WARN: explorer failed aumid=${aumid} err=${String(e?.message || e)}`);
-        }
-      }
+      appendBedrockLaunchLog('WARN: direct exe launch failed; AUMID fallback skipped by policy (no-store mode)');
     }
 
     // IMPORTANT: do NOT fallback to minecraft://, because Windows may redirect to Store.
