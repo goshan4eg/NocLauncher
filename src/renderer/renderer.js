@@ -2103,12 +2103,9 @@ async function handleBedrockAction() {
     return;
   }
 
-  // Если не запустилось — предлагаем установку через Store
-  const storeRes = await window.noc.bedrockOpenStore();
-  if (storeRes?.ok) {
-    if (state.mode === 'bedrock') setStatus('Bedrock не найден. Открываю Microsoft Store…');
-  } else {
-    if (state.mode === 'bedrock') setStatus(`Ошибка запуска Bedrock: ${res?.error || 'unknown'}`);
+  // Не открываем Store автоматически: только показываем ошибку запуска.
+  if (state.mode === 'bedrock') {
+    setStatus(`Ошибка запуска Bedrock: ${res?.error || 'unknown'}`);
   }
 }
 
