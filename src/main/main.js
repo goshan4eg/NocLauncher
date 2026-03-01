@@ -6163,6 +6163,12 @@ ipcMain.handle('bedrock:launch', async () => {
       };
     }
 
+    // Hide launcher immediately after successful Bedrock start request.
+    try {
+      hideLauncherForGame();
+      appendBedrockLaunchLog('INFO: launcher_hidden_after_bedrock_start');
+    } catch (_) {}
+
     // Non-blocking diagnostics in background (do not block launch path)
     setTimeout(async () => {
       try {
