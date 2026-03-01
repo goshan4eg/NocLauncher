@@ -5387,12 +5387,12 @@ ipcMain.handle('bedrock:versionToolOpen', async (_e, payload) => {
       ];
       const oldCandidates = [
         path.join(root, 'intrumente2', 'NocLauncher.exe'),
+        path.join(root, 'intrumente2', 'M Centers.exe'),
         path.join(root, 'intrumente2', 'intrument.exe'),
         path.join(root, 'intrumente2', 'instrument.exe')
       ];
-      const preferredList = mode === 'old' ? oldCandidates : newCandidates;
-      const fallbackList = mode === 'old' ? newCandidates : oldCandidates;
-      const exePath = [...preferredList, ...fallbackList].find(p => fs.existsSync(p)) || '';
+      const selectedList = mode === 'old' ? oldCandidates : newCandidates;
+      const exePath = selectedList.find(p => fs.existsSync(p)) || '';
 
       if (!exePath) {
         await shell.openPath(root);
