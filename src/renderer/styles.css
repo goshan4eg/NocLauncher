@@ -1,4 +1,4 @@
-﻿/* =========================================================
+/* =========================================================
    NocLauncher UI Redesign (Minecraft Launcher inspired)
    - Dark sidebar + top tabs + hero + bottom play bar
    - Consistent modal / forms styling
@@ -60,19 +60,6 @@ body{
 .hidden{ display:none !important; }
 .mono{ font-family: var(--mono); }
 .muted{ color: var(--muted2); }
-
-#fx{
-  position: fixed;
-  inset: 8px;
-  width: calc(100% - 16px);
-  height: calc(100% - 16px);
-  border-radius: 20px;
-  pointer-events: none;
-  opacity: .16;
-  filter: saturate(.9) contrast(1.05);
-  z-index: 0;
-}
-body.low-power #fx{ opacity: 0; }
 
 .app, .screen{
   position: relative;

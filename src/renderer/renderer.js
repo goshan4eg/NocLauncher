@@ -1148,7 +1148,6 @@ async function loadSettings() {
   if ($('#curseforgeApiKey')) $('#curseforgeApiKey').value = state.settings.curseforgeApiKey || '';
   if ($('#jvmPreset')) $('#jvmPreset').value = state.settings.jvmPreset || 'auto';
   if ($('#safeLaunchNoMods')) $('#safeLaunchNoMods').checked = !!state.settings.safeLaunchNoMods;
-  if ($('#uiLowPower')) $('#uiLowPower').checked = !!state.settings.uiLowPower;
   if ($('#closeLauncherOnGameStart')) $('#closeLauncherOnGameStart').checked = state.settings.closeLauncherOnGameStart !== false;
   if ($('#mirrorFallback')) $('#mirrorFallback').checked = state.settings.enableMirrorFallback !== false;
   if ($('#bedrockDemoMode')) $('#bedrockDemoMode').checked = !!state.settings.bedrockDemoMode;
@@ -1494,7 +1493,7 @@ async function saveSettings() {
     downloadSource: $('#downloadSource').value || 'auto',
     jvmPreset: $('#jvmPreset').value || 'auto',
     safeLaunchNoMods: !!$('#safeLaunchNoMods').checked,
-    uiLowPower: !!$('#uiLowPower').checked,
+    uiLowPower: false,
     closeLauncherOnGameStart: !!$('#closeLauncherOnGameStart').checked,
     enableMirrorFallback: !!$('#mirrorFallback').checked,
     bedrockDemoMode: !!$('#bedrockDemoMode').checked,
@@ -1508,9 +1507,6 @@ async function saveSettings() {
   await window.noc.syncJavaServers();
 
   applyPerformanceMode();
-  if (!patch.uiLowPower && !state.fxStarted) {
-    try { initFX(); state.fxStarted = true; } catch {}
-  }
   $('#memMin').value = memMin;
   $('#memMax').value = memMax;
   applyMini();
@@ -2992,14 +2988,6 @@ function wireUI() {
   $('#btnSaveSettings')?.addEventListener('click', saveSettings);
 
   // instant toggles for critical options (works even if user forgets to press Save)
-  $('#uiLowPower')?.addEventListener('change', async () => {
-    const v = !!$('#uiLowPower')?.checked;
-    try { state.settings = await window.noc.settingsSet({ uiLowPower: v }); } catch {}
-    applyPerformanceMode();
-    if (!v && !state.fxStarted) {
-      try { initFX(); state.fxStarted = true; } catch {}
-    }
-  });
   $('#closeLauncherOnGameStart')?.addEventListener('change', async () => {
     const v = !!$('#closeLauncherOnGameStart')?.checked;
     try { state.settings = await window.noc.settingsSet({ closeLauncherOnGameStart: v }); } catch {}
@@ -4115,10 +4103,6 @@ async function doModsSearch() {
   await loadSettings();
   try {
     applyPerformanceMode();
-    if (!state.settings?.uiLowPower && !state.fxStarted) {
-      initFX();
-      state.fxStarted = true;
-    }
   } catch (e) { console.error(e); }
 
   // Fill UI immediately from settings (avoid "пустой лаунчер")
@@ -4143,7 +4127,7 @@ async function doModsSearch() {
     try { applyMini(); } catch {}
     try {
       // in low-power mode avoid frequent health/network work
-      if (!state.settings?.uiLowPower) refreshHealthPanelLive();
+      refreshHealthPanelLive();
     } catch {}
-  }, state.settings?.uiLowPower ? 30000 : 10000);
+  }, 10000);
 })();
