@@ -6120,10 +6120,22 @@ ipcMain.handle('bedrock:launch', async () => {
     }
 
     if (!launched) {
+      const missingMinecraft = !pf?.details?.minecraftInstalled || (Array.isArray(pf?.criticalMissing) && pf.criticalMissing.includes('Minecraft for Windows'));
+      if (missingMinecraft) {
+        try {
+          appendBedrockLaunchLog('WARN: launch_failed_and_minecraft_missing -> redirect_store');
+          await shell.openExternal('ms-windows-store://pdp/?PFN=Microsoft.MinecraftUWP_8wekyb3d8bbwe');
+        } catch (e) {
+          appendBedrockLaunchLog(`WARN: redirect_store_failed=${String(e?.message || e)}`);
+        }
+      }
       restoreLauncherAfterGame();
       return {
         ok: false,
-        error: 'Не удалось запустить установленную игру системными методами (AppsFolder).',
+        redirectedToStore: missingMinecraft,
+        error: missingMinecraft
+          ? 'Minecraft не обнаружен. Открыт Microsoft Store для установки.'
+          : 'Не удалось запустить установленную игру системными методами (AppsFolder).',
         logPath: bedrockLogPath || ''
       };
     }
