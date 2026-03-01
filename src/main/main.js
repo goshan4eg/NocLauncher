@@ -716,6 +716,39 @@ async function detectBedrockServerArg() {
   return '';
 }
 
+function findBestLocalBedrockExe() {
+  try {
+    const roots = [
+      path.join(APP_ROOT, 'Version'),
+      path.join(process.resourcesPath, 'Version')
+    ].filter(p => fs.existsSync(p));
+
+    const candidates = [];
+    for (const root of roots) {
+      const dirs = fs.readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name);
+      for (const d of dirs) {
+        const full = path.join(root, d);
+        const exe1 = path.join(full, 'Minecraft.Windows.exe');
+        const exe2 = path.join(full, 'Minecraft.WindowsBeta.exe');
+        if (fs.existsSync(exe1)) {
+          const st = fs.statSync(exe1);
+          candidates.push({ exe: exe1, mtimeMs: st.mtimeMs || 0 });
+        }
+        if (fs.existsSync(exe2)) {
+          const st = fs.statSync(exe2);
+          candidates.push({ exe: exe2, mtimeMs: st.mtimeMs || 0 });
+        }
+      }
+    }
+
+    if (!candidates.length) return '';
+    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    return candidates[0].exe;
+  } catch (_) {
+    return '';
+  }
+}
+
 function ensureBedrockAppRuntimeDlls(installLocation) {
   const copied = [];
   const missing = [];
@@ -6003,12 +6036,40 @@ ipcMain.handle('bedrock:launch', async () => {
     await ensureBedrockServerLink();
     appendBedrockLaunchLog('INFO: ensureBedrockServerLink done');
 
+    // Simple universal path first: detect local installed game exe and start it directly (no args).
+    // This restores old stable behavior and avoids fragile app-window heuristics.
+    let launched = false;
+    try {
+      const localExe = findBestLocalBedrockExe();
+      if (localExe) {
+        appendBedrockLaunchLog(`INFO: simple_local_detect exe=${localExe}`);
+        const localDir = path.dirname(localExe);
+        try {
+          const rtLocal = ensureBedrockAppRuntimeDlls(localDir);
+          appendBedrockLaunchLog(`INFO: simple_local_runtime_dlls=${JSON.stringify(rtLocal)}`);
+        } catch (_) {}
+
+        try {
+          await execFileAsync('cmd', ['/c', `start "" "${localExe.replace(/"/g, '""')}"`], { windowsHide: true });
+          await new Promise(r => setTimeout(r, 1800));
+          launched = isBedrockRunning();
+          appendBedrockLaunchLog(`INFO: simple_local_launch_result launched=${launched}`);
+        } catch (e) {
+          appendBedrockLaunchLog(`WARN: simple_local_launch_failed err=${String(e?.message || e)}`);
+        }
+      } else {
+        appendBedrockLaunchLog('INFO: simple_local_detect exe_not_found');
+      }
+    } catch (e) {
+      appendBedrockLaunchLog(`WARN: simple_local_detect_failed err=${String(e?.message || e)}`);
+    }
+
     // Launch Bedrock first; hide launcher only after confirmed start.
 
     // Robust direct launch without Store fallback:
-    // Robust launch without Store redirect: use only validated StartApps AUMIDs for installed package,
-    // then fallback to direct package exe start.
-    let launched = false;
+    // Robust launch without Store redirect: use validated StartApps AUMIDs / package exe fallbacks.
+    if (!launched) {
+
     const waitStartedDetailed = async (ms = 3000) => {
       const until = Date.now() + ms;
       let running = false;
@@ -6269,6 +6330,8 @@ ipcMain.handle('bedrock:launch', async () => {
         appendBedrockLaunchLog(`WARN: post-launch check failed: ${String(e?.message || e)}`);
       }
     }, 4000);
+
+    }
 
     watchBedrockAndRestore();
     ensureAutoLocalHostWatcher();
