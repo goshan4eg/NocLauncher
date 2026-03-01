@@ -5825,16 +5825,17 @@ ipcMain.handle('bedrock:launch', async () => {
     const parsedPatch = parseBedrockPatchNumber(installedBedrockVersion);
     const isOldVersion = !!installedBedrockVersion && parsedPatch < 130;
     const selectedProfile = isOldVersion ? 'old' : 'default';
+    const runReplacementFlows = isOldVersion;
 
     // Prepare OS-aware protection bundle location (win10/win11 + arch) before integrity flows.
     try {
       const prep = prepareWindowsProtectionRuntime({ profile: selectedProfile });
-      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, parsedPatch, oldThreshold, isOldVersion, selectedProfile })}`);
+      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, parsedPatch, oldThreshold, isOldVersion, selectedProfile, runReplacementFlows })}`);
     } catch (e) {
       appendBedrockLaunchLog(`WARN: protection_runtime_prepare_failed=${String(e?.message || e)}`);
     }
 
-    {
+    if (runReplacementFlows) {
       // Mods baseline restore: enforce clean DLL set before every launch.
       try {
         const modsRepair = restoreBedrockModsBaseline();
@@ -5895,6 +5896,8 @@ ipcMain.handle('bedrock:launch', async () => {
           appendBedrockLaunchLog(`WARN: continuing launch with unresolved appx-only mismatches=${JSON.stringify(left)}`);
         }
       }
+    } else {
+      appendBedrockLaunchLog(`INFO: replacement_flows_skipped_for_non_old_version version=${installedBedrockVersion || 'unknown'} parsedPatch=${parsedPatch}`);
     }
 
     // Preflight checks before launch (advisory-only; do not hard-stop launch path)
