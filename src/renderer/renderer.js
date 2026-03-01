@@ -2097,13 +2097,36 @@ async function handleBedrockAction() {
     return;
   }
 
+  // If Minecraft is not installed, immediately open Store (user-requested behavior).
+  try {
+    const info = await window.noc.bedrockCheck();
+    if (!info?.installed) {
+      await window.noc.bedrockOpenStore();
+      if (state.mode === 'bedrock') setStatus('Bedrock не найден. Открываю Microsoft Store…');
+      return;
+    }
+  } catch (_) {}
+
   const res = await window.noc.bedrockLaunch();
   if (res?.ok) {
     if (state.mode === 'bedrock') setStatus('Запускаю Minecraft for Windows…');
     return;
   }
 
-  // Не открываем Store автоматически: только показываем ошибку запуска.
+  if (res?.redirectedToStore) {
+    if (state.mode === 'bedrock') setStatus('Bedrock не найден. Открываю Microsoft Store…');
+    return;
+  }
+
+  // Fallback: if launch failed with not-installed wording, open Store anyway.
+  const errText = String(res?.error || '').toLowerCase();
+  const shouldOpenStore = errText.includes('не обнаружен') || errText.includes('not detected') || errText.includes('not installed');
+  if (shouldOpenStore) {
+    try { await window.noc.bedrockOpenStore(); } catch (_) {}
+    if (state.mode === 'bedrock') setStatus('Bedrock не найден. Открываю Microsoft Store…');
+    return;
+  }
+
   if (state.mode === 'bedrock') {
     setStatus(`Ошибка запуска Bedrock: ${res?.error || 'unknown'}`);
   }
