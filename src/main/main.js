@@ -5958,24 +5958,8 @@ ipcMain.handle('bedrock:launch', async () => {
 
     appendBedrockLaunchLog(`INFO: launch_aumid_candidates=${JSON.stringify(aumidCandidates)} installLocation=${installLocation}`);
 
-    // Try validated AUMIDs only (invalid AUMID often opens Store).
-    for (const aumid of aumidCandidates) {
-      const appUri = `shell:AppsFolder\\${aumid}`;
-      try {
-        appendBedrockLaunchLog(`INFO: try explorer aumid=${aumid}`);
-        await execFileAsync('explorer.exe', [appUri], { windowsHide: true });
-        launched = await waitStarted(3500);
-        if (launched) {
-          appendBedrockLaunchLog(`INFO: start confirmed after explorer aumid=${aumid}`);
-          break;
-        }
-      } catch (e) {
-        appendBedrockLaunchLog(`WARN: explorer failed aumid=${aumid} err=${String(e?.message || e)}`);
-      }
-    }
-
-    // Fallback: start package exe directly from detected install location.
-    if (!launched && installLocation) {
+    // First choice: start package exe directly from detected install location (most stable, avoids Store redirects).
+    if (installLocation) {
       const exeCandidates = [
         path.join(installLocation, 'Minecraft.Windows.exe'),
         path.join(installLocation, 'Minecraft.WindowsBeta.exe')
@@ -5985,13 +5969,31 @@ ipcMain.handle('bedrock:launch', async () => {
         try {
           appendBedrockLaunchLog(`INFO: try direct exe=${exePath}`);
           await execFileAsync(exePath, [], { windowsHide: true });
-          launched = await waitStarted(4000);
+          launched = await waitStarted(4500);
           if (launched) {
             appendBedrockLaunchLog(`INFO: start confirmed after direct exe=${exePath}`);
             break;
           }
         } catch (e) {
           appendBedrockLaunchLog(`WARN: direct exe failed path=${exePath} err=${String(e?.message || e)}`);
+        }
+      }
+    }
+
+    // Fallback: validated AUMIDs only (used only if direct exe launch didn't start process).
+    if (!launched) {
+      for (const aumid of aumidCandidates) {
+        const appUri = `shell:AppsFolder\\${aumid}`;
+        try {
+          appendBedrockLaunchLog(`INFO: try explorer aumid=${aumid}`);
+          await execFileAsync('explorer.exe', [appUri], { windowsHide: true });
+          launched = await waitStarted(3500);
+          if (launched) {
+            appendBedrockLaunchLog(`INFO: start confirmed after explorer aumid=${aumid}`);
+            break;
+          }
+        } catch (e) {
+          appendBedrockLaunchLog(`WARN: explorer failed aumid=${aumid} err=${String(e?.message || e)}`);
         }
       }
     }
