@@ -661,6 +661,24 @@ async function detectInstalledBedrockVersion() {
   }
 }
 
+async function detectInstalledBedrockVersionSmart() {
+  // 1) Prefer AppX package version when available.
+  const appxVer = String(await detectInstalledBedrockVersion() || '').trim();
+  if (appxVer) return { version: appxVer, source: 'appx' };
+
+  // 2) Fallback to locally installed launcher-managed version folder.
+  try {
+    const exe = findBestLocalBedrockExe();
+    if (exe) {
+      const dirName = path.basename(path.dirname(exe));
+      const m = String(dirName).match(/(\d+\.\d+\.\d+(?:\.\d+)?)/);
+      if (m?.[1]) return { version: m[1], source: 'local_dir' };
+    }
+  } catch (_) {}
+
+  return { version: '', source: 'unknown' };
+}
+
 function parseBedrockPatchNumber(versionStr) {
   const p = String(versionStr || '').split('.').map(x => Number(x) || 0);
   const c = p[2] || 0;
@@ -5943,7 +5961,8 @@ ipcMain.handle('bedrock:launch', async () => {
     // < 1.21.130 -> old profile, >= 1.21.130 -> default profile.
     // Supports both plain (1.21.80.3) and Appx-encoded (1.21.8003.0) forms.
     const oldThreshold = '1.21.130.0';
-    const installedBedrockVersion = await detectInstalledBedrockVersion();
+    const verDetect = await detectInstalledBedrockVersionSmart();
+    const installedBedrockVersion = String(verDetect?.version || '');
     const profileInfo = classifyBedrockLaunchProfile(installedBedrockVersion);
     const parsedPatch = profileInfo.parsedPatch;
     const isOldVersion = profileInfo.isOldVersion;
@@ -5954,7 +5973,7 @@ ipcMain.handle('bedrock:launch', async () => {
     // Prepare OS-aware protection bundle location (win10/win11 + arch) before integrity flows.
     try {
       const prep = prepareWindowsProtectionRuntime({ profile: selectedProfile });
-      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, parsedPatch, oldThreshold, isOldVersion, selectedProfile, runReplacementFlows, profileReason: profileInfo.reason })}`);
+      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, versionSource: verDetect?.source || 'unknown', parsedPatch, oldThreshold, isOldVersion, selectedProfile, runReplacementFlows, profileReason: profileInfo.reason })}`);
     } catch (e) {
       appendBedrockLaunchLog(`WARN: protection_runtime_prepare_failed=${String(e?.message || e)}`);
     }
