@@ -6032,9 +6032,9 @@ ipcMain.handle('bedrock:launch', async () => {
       appendBedrockLaunchLog(`WARN: preflight_critical=${(pf.criticalMissing || []).join(', ')}`);
     }
 
-    // Try to add server entry first (harmless if already present)
-    await ensureBedrockServerLink();
-    appendBedrockLaunchLog('INFO: ensureBedrockServerLink done');
+    // IMPORTANT: do not call minecraft:// addExternalServer during launch.
+    // It can trigger an extra Bedrock instance/window.
+    appendBedrockLaunchLog('INFO: ensureBedrockServerLink skipped_during_launch');
 
     // Simple universal path first: detect local installed game exe and start it directly (no args).
     // This restores old stable behavior and avoids fragile app-window heuristics.
