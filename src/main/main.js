@@ -5978,10 +5978,16 @@ ipcMain.handle('bedrock:launch', async () => {
       }
     }
 
-    // Fallback: protocol launch
+    // IMPORTANT: do NOT fallback to minecraft://, because Windows may redirect to Store.
+    // If direct launch failed, keep launcher visible and return clear diagnostics instead of Store redirect.
     if (!launched) {
-      appendBedrockLaunchLog('INFO: fallback launching minecraft://');
-      await shell.openExternal('minecraft://');
+      appendBedrockLaunchLog('ERROR: all direct launch methods failed; skip minecraft:// fallback to avoid Store redirect');
+      restoreLauncherAfterGame();
+      return {
+        ok: false,
+        error: 'Не удалось запустить Bedrock напрямую (без перехода в Store). Проверь appId/установку и смотри latest-bedrock.txt.',
+        logPath: bedrockLogPath || ''
+      };
     }
 
     // Non-blocking diagnostics in background (do not block launch path)
