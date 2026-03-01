@@ -6071,8 +6071,58 @@ ipcMain.handle('bedrock:launch', async () => {
 
     appendBedrockLaunchLog(`INFO: launch_aumid_candidates=${JSON.stringify(aumidCandidates)} installLocation=${installLocation}`);
 
-    // First choice: start package exe directly from detected install location (most stable, avoids Store redirects).
-    if (installLocation) {
+    // For modern/new versions prefer package activation first (better chance to attach visible app window).
+    if (!isOldVersion && aumidCandidates.length) {
+      for (const aumid of aumidCandidates) {
+        try {
+          appendBedrockLaunchLog(`INFO: try cmd AppsFolder aumid=${aumid}`);
+          await execFileAsync('cmd', ['/c', `start "" "shell:AppsFolder\\${String(aumid).replace(/"/g, '""')}"`], { windowsHide: true });
+          launched = await confirmVisibleLaunch(`cmd_appsfolder:${aumid}`);
+          if (launched) break;
+        } catch (e) {
+          appendBedrockLaunchLog(`WARN: cmd AppsFolder failed aumid=${aumid} err=${String(e?.message || e)}`);
+        }
+
+        try {
+          appendBedrockLaunchLog(`INFO: try activation-manager aumid=${aumid}`);
+          const ps = [
+            "$ErrorActionPreference='Stop';",
+            "$src=@'",
+            "using System;",
+            "using System.Runtime.InteropServices;",
+            "[ComImport, Guid(\"45BA127D-10A8-46EA-8AB7-56EA9078943C\")]",
+            "class ApplicationActivationManager {}",
+            "[ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid(\"2E941141-7F97-4756-BA1D-9DECDE894A3D\")]",
+            "interface IApplicationActivationManager {",
+            "  int ActivateApplication(string appUserModelId, string arguments, uint options, out uint processId);",
+            "  int ActivateForFile(string appUserModelId, IntPtr itemArray, string verb, out uint processId);",
+            "  int ActivateForProtocol(string appUserModelId, IntPtr itemArray, out uint processId);",
+            "}",
+            "public static class UwpLauncher {",
+            "  public static uint Launch(string aumid){",
+            "    var obj = (IApplicationActivationManager)new ApplicationActivationManager();",
+            "    uint pid;",
+            "    int hr = obj.ActivateApplication(aumid, null, 0, out pid);",
+            "    if(hr < 0) Marshal.ThrowExceptionForHR(hr);",
+            "    return pid;",
+            "  }",
+            "}",
+            "'@;",
+            "Add-Type -TypeDefinition $src -Language CSharp;",
+            `$pid=[UwpLauncher]::Launch('${String(aumid).replace(/'/g, "''")}');`,
+            `Write-Output \"PID=$pid\";`
+          ].join(' ');
+          await runPowerShellAsync(ps);
+          launched = await confirmVisibleLaunch(`activation_manager_preferred:${aumid}`);
+          if (launched) break;
+        } catch (e) {
+          appendBedrockLaunchLog(`WARN: activation-manager(preferred) failed aumid=${aumid} err=${String(e?.message || e)}`);
+        }
+      }
+    }
+
+    // Next choice: start package exe directly from detected install location.
+    if (!launched && installLocation) {
       try {
         const rt = ensureBedrockAppRuntimeDlls(installLocation);
         appendBedrockLaunchLog(`INFO: ensure_app_runtime_dlls=${JSON.stringify(rt)}`);
@@ -6140,7 +6190,7 @@ ipcMain.handle('bedrock:launch', async () => {
 
     // Fallback without Store redirect: native UWP activation (IApplicationActivationManager)
     // This activates installed app by AUMID directly (not via Store/protocol handlers).
-    if (!launched && aumidCandidates.length) {
+    if (!launched && aumidCandidates.length && isOldVersion) {
       for (const aumid of aumidCandidates) {
         try {
           appendBedrockLaunchLog(`INFO: try activation-manager aumid=${aumid}`);
