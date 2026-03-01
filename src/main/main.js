@@ -6096,317 +6096,73 @@ ipcMain.handle('bedrock:launch', async () => {
     // It can trigger an extra Bedrock instance/window.
     appendBedrockLaunchLog('INFO: ensureBedrockServerLink skipped_during_launch');
 
-    // Simple universal path first: detect local installed game exe and start it directly (no args).
-    // This restores old stable behavior and avoids fragile app-window heuristics.
+    // NocQ-style plain launch flow for installed game (user requested).
+    // Keep launch path simple: AppsFolder app activation methods only.
     let launched = false;
-    let localExeFound = false;
-    try {
-      const localExe = findBestLocalBedrockExe();
-      if (localExe) {
-        localExeFound = true;
-        appendBedrockLaunchLog(`INFO: simple_local_detect exe=${localExe}`);
-        const localDir = path.dirname(localExe);
-        try {
-          const rtLocal = ensureBedrockAppRuntimeDlls(localDir);
-          appendBedrockLaunchLog(`INFO: simple_local_runtime_dlls=${JSON.stringify(rtLocal)}`);
-        } catch (_) {}
-
-        try {
-          // Minimal guaranteed path: plain Start-Process with working directory, no extra args.
-          await execFileAsync('powershell', ['-NoProfile', '-Command', `Start-Process -FilePath '${localExe.replace(/'/g, "''")}' -WorkingDirectory '${localDir.replace(/'/g, "''")}'`], { windowsHide: true });
-          appendBedrockLaunchLog('INFO: simple_local_launch_issued=true');
-          await new Promise(r => setTimeout(r, 3000));
-          launched = isBedrockRunning();
-          appendBedrockLaunchLog(`INFO: simple_local_launch_result launched=${launched}`);
-        } catch (e) {
-          appendBedrockLaunchLog(`WARN: simple_local_launch_failed err=${String(e?.message || e)}`);
-        }
-      } else {
-        appendBedrockLaunchLog('INFO: simple_local_detect exe_not_found');
-      }
-    } catch (e) {
-      appendBedrockLaunchLog(`WARN: simple_local_detect_failed err=${String(e?.message || e)}`);
-    }
-
-    // User-requested behavior: if game is not detected locally, redirect to Store.
-    if (!localExeFound && !pf?.details?.minecraftInstalled) {
-      try {
-        appendBedrockLaunchLog('WARN: game_not_detected_local_or_appx -> redirect_store');
-        await shell.openExternal('ms-windows-store://pdp/?PFN=Microsoft.MinecraftUWP_8wekyb3d8bbwe');
-      } catch (e) {
-        appendBedrockLaunchLog(`WARN: redirect_store_failed=${String(e?.message || e)}`);
-      }
-      restoreLauncherAfterGame();
-      return {
-        ok: false,
-        redirectedToStore: true,
-        error: 'Игра не обнаружена на ПК. Открыт Microsoft Store для установки.',
-        logPath: bedrockLogPath || ''
-      };
-    }
-
-    // Simple AppsFolder launch fallback (no complex orchestration).
-    if (!launched) {
-      try {
-        const appInfo = getBedrockAppInfo();
-        const quickIds = [
-          String(appInfo?.appId || '').trim(),
-          'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App',
-          'MICROSOFT.MINECRAFTUWP_8wekyb3d8bbwe!Game'
-        ].filter(Boolean);
-        for (const appId of quickIds) {
-          try {
-            appendBedrockLaunchLog(`INFO: simple_appsfolder_try appId=${appId}`);
-            await execFileAsync('cmd', ['/c', `start "" "shell:AppsFolder\\${String(appId).replace(/"/g, '""')}"`], { windowsHide: true });
-            await new Promise(r => setTimeout(r, 2200));
-            if (isBedrockRunning()) {
-              launched = true;
-              appendBedrockLaunchLog(`INFO: simple_appsfolder_success appId=${appId}`);
-              break;
-            }
-          } catch (e) {
-            appendBedrockLaunchLog(`WARN: simple_appsfolder_failed appId=${appId} err=${String(e?.message || e)}`);
-          }
-        }
-      } catch (e) {
-        appendBedrockLaunchLog(`WARN: simple_appsfolder_block_failed err=${String(e?.message || e)}`);
-      }
-    }
-
-    // Launch Bedrock first; hide launcher only after confirmed start.
-
-    // Robust direct launch without Store fallback:
-    // Robust launch without Store redirect: use validated StartApps AUMIDs / package exe fallbacks.
-    if (!launched) {
-
-    const waitStartedDetailed = async (ms = 3000) => {
+    const info = getBedrockAppInfo();
+    const appId = String(info?.appId || 'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App').trim();
+    const appUri = `shell:AppsFolder\\${appId}`;
+    const waitStarted = async (ms = 2500) => {
       const until = Date.now() + ms;
-      let running = false;
-      let visible = false;
       while (Date.now() < until) {
-        try { running = isBedrockRunning(); } catch (_) { running = false; }
-        try { visible = running ? isBedrockWindowVisible() : false; } catch (_) { visible = false; }
-        if (visible) return { running: true, visible: true };
-        await new Promise(r => setTimeout(r, 300));
-      }
-      return { running, visible };
-    };
-
-    const confirmVisibleLaunch = async (label) => {
-      const state = await waitStartedDetailed(15000);
-      if (state.visible) {
-        appendBedrockLaunchLog(`INFO: launch confirmed with visible window via ${label}`);
-        return true;
-      }
-      if (state.running) {
-        // Some builds keep MainWindowTitle empty for longer; treat running process as success
-        // and avoid killing potentially healthy starts.
-        appendBedrockLaunchLog(`WARN: launch running without detected window via ${label}; accepting as started`);
-        return true;
+        try { if (isBedrockRunning()) return true; } catch (_) {}
+        await new Promise(r => setTimeout(r, 250));
       }
       return false;
     };
 
-    let installLocation = '';
-    const aumidCandidates = [];
+    // Attempt 1: shell.openExternal(appUri)
     try {
-      const detectCmd = [
-        "$pkg = Get-AppxPackage -Name Microsoft.MinecraftUWP | Select-Object -First 1;",
-        "if(-not $pkg){''; exit}",
-        "$pf = $pkg.PackageFamilyName;",
-        "$loc = $pkg.InstallLocation;",
-        "$apps = Get-StartApps | Where-Object { $_.AppID -like ($pf + '!*') } | Select-Object -ExpandProperty AppID;",
-        "[pscustomobject]@{ installLocation=$loc; appIds=@($apps | Select-Object -Unique) } | ConvertTo-Json -Compress"
-      ].join(' ');
-
-      const raw = String(await runPowerShellAsync(detectCmd) || '').trim();
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        installLocation = String(parsed?.installLocation || '').trim();
-        const ids = Array.isArray(parsed?.appIds) ? parsed.appIds : (parsed?.appIds ? [parsed.appIds] : []);
-        for (const v of ids) {
-          const s = String(v || '').trim();
-          if (s && !aumidCandidates.includes(s)) aumidCandidates.push(s);
-        }
-      }
+      appendBedrockLaunchLog(`INFO: launching via shell.openExternal ${appUri}`);
+      const r = await shell.openExternal(appUri);
+      appendBedrockLaunchLog(`INFO: shell.openExternal appUri result=${String(r || 'ok')}`);
+      launched = await waitStarted(3000);
+      appendBedrockLaunchLog(launched ? 'INFO: start confirmed after shell.openExternal' : 'WARN: shell.openExternal did not start process');
     } catch (e) {
-      appendBedrockLaunchLog(`WARN: AUMID detect failed: ${String(e?.message || e)}`);
+      appendBedrockLaunchLog(`WARN: shell.openExternal appUri failed: ${String(e?.message || e)}`);
     }
 
-    appendBedrockLaunchLog(`INFO: launch_aumid_candidates=${JSON.stringify(aumidCandidates)} installLocation=${installLocation}`);
-
-    // For modern/new versions prefer package activation first (better chance to attach visible app window).
-    if (!isOldVersion && aumidCandidates.length) {
-      for (const aumid of aumidCandidates) {
-        try {
-          appendBedrockLaunchLog(`INFO: try cmd AppsFolder aumid=${aumid}`);
-          await execFileAsync('cmd', ['/c', `start "" "shell:AppsFolder\\${String(aumid).replace(/"/g, '""')}"`], { windowsHide: true });
-          launched = await confirmVisibleLaunch(`cmd_appsfolder:${aumid}`);
-          if (launched) break;
-        } catch (e) {
-          appendBedrockLaunchLog(`WARN: cmd AppsFolder failed aumid=${aumid} err=${String(e?.message || e)}`);
-        }
-
-        try {
-          appendBedrockLaunchLog(`INFO: try activation-manager aumid=${aumid}`);
-          const ps = [
-            "$ErrorActionPreference='Stop';",
-            "$src=@'",
-            "using System;",
-            "using System.Runtime.InteropServices;",
-            "[ComImport, Guid(\"45BA127D-10A8-46EA-8AB7-56EA9078943C\")]",
-            "class ApplicationActivationManager {}",
-            "[ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid(\"2E941141-7F97-4756-BA1D-9DECDE894A3D\")]",
-            "interface IApplicationActivationManager {",
-            "  int ActivateApplication(string appUserModelId, string arguments, uint options, out uint processId);",
-            "  int ActivateForFile(string appUserModelId, IntPtr itemArray, string verb, out uint processId);",
-            "  int ActivateForProtocol(string appUserModelId, IntPtr itemArray, out uint processId);",
-            "}",
-            "public static class UwpLauncher {",
-            "  public static uint Launch(string aumid){",
-            "    var obj = (IApplicationActivationManager)new ApplicationActivationManager();",
-            "    uint pid;",
-            "    int hr = obj.ActivateApplication(aumid, null, 0, out pid);",
-            "    if(hr < 0) Marshal.ThrowExceptionForHR(hr);",
-            "    return pid;",
-            "  }",
-            "}",
-            "'@;",
-            "Add-Type -TypeDefinition $src -Language CSharp;",
-            `$pid=[UwpLauncher]::Launch('${String(aumid).replace(/'/g, "''")}');`,
-            `Write-Output \"PID=$pid\";`
-          ].join(' ');
-          await runPowerShellAsync(ps);
-          launched = await confirmVisibleLaunch(`activation_manager_preferred:${aumid}`);
-          if (launched) break;
-        } catch (e) {
-          appendBedrockLaunchLog(`WARN: activation-manager(preferred) failed aumid=${aumid} err=${String(e?.message || e)}`);
-        }
-      }
-    }
-
-    // Next choice: start package exe directly from detected install location.
-    if (!launched && installLocation) {
+    // Attempt 2: explorer.exe appUri
+    if (!launched) {
       try {
-        const rt = ensureBedrockAppRuntimeDlls(installLocation);
-        appendBedrockLaunchLog(`INFO: ensure_app_runtime_dlls=${JSON.stringify(rt)}`);
+        appendBedrockLaunchLog('INFO: launching via explorer.exe AppsFolder URI');
+        await execFileAsync('explorer.exe', [appUri], { windowsHide: true });
+        launched = await waitStarted(3000);
+        appendBedrockLaunchLog(launched ? 'INFO: start confirmed after explorer.exe' : 'WARN: explorer.exe did not start process');
       } catch (e) {
-        appendBedrockLaunchLog(`WARN: ensure_app_runtime_dlls_failed=${String(e?.message || e)}`);
-      }
-
-      const serverArg = await detectBedrockServerArg();
-      const exeCandidates = [
-        path.join(installLocation, 'Minecraft.Windows.exe'),
-        path.join(installLocation, 'Minecraft.WindowsBeta.exe')
-      ];
-      for (const exePath of exeCandidates) {
-        if (!fs.existsSync(exePath)) continue;
-        // First attempt must be arg-free. Some GDK builds can start headless with stale -ServerName values.
-        const args = [];
-        const argsWithServer = serverArg ? [serverArg] : [];
-
-        // Try 1: detached spawn (don't wait on process exit)
-        try {
-          appendBedrockLaunchLog(`INFO: try spawn detached exe=${exePath} args=${JSON.stringify(args)}`);
-          const cp = childProcess.spawn(exePath, args, { detached: true, stdio: 'ignore', windowsHide: true });
-          try { cp.unref(); } catch (_) {}
-          launched = await confirmVisibleLaunch(`detached_spawn:${exePath}`);
-          if (launched) break;
-        } catch (e) {
-          appendBedrockLaunchLog(`WARN: detached spawn failed path=${exePath} err=${String(e?.message || e)}`);
-        }
-
-        // Try 2: cmd start (classic Windows shell launch)
-        try {
-          appendBedrockLaunchLog(`INFO: try cmd start exe=${exePath}`);
-          const cmd = `start "" "${exePath.replace(/"/g, '""')}"${args.length ? (' ' + args.map(a => '"' + String(a).replace(/"/g, '""') + '"').join(' ')) : ''}`;
-          await execFileAsync('cmd', ['/c', cmd], { windowsHide: true });
-          launched = await confirmVisibleLaunch(`cmd_start:${exePath}`);
-          if (launched) break;
-        } catch (e) {
-          appendBedrockLaunchLog(`WARN: cmd start failed path=${exePath} err=${String(e?.message || e)}`);
-        }
-
-        // Try 3: direct execFile
-        try {
-          appendBedrockLaunchLog(`INFO: try direct execFile exe=${exePath} args=${JSON.stringify(args)}`);
-          await execFileAsync(exePath, args, { windowsHide: true });
-          launched = await confirmVisibleLaunch(`execFile:${exePath}`);
-          if (launched) break;
-        } catch (e) {
-          appendBedrockLaunchLog(`WARN: direct execFile failed path=${exePath} err=${String(e?.message || e)}`);
-        }
-
-        // Try 4: retry with learned -ServerName arg only as fallback.
-        if (!launched && argsWithServer.length) {
-          try {
-            appendBedrockLaunchLog(`INFO: retry with_server_arg exe=${exePath} args=${JSON.stringify(argsWithServer)}`);
-            const cp2 = childProcess.spawn(exePath, argsWithServer, { detached: true, stdio: 'ignore', windowsHide: true });
-            try { cp2.unref(); } catch (_) {}
-            launched = await confirmVisibleLaunch(`with_server_arg:${exePath}`);
-            if (launched) break;
-          } catch (e) {
-            appendBedrockLaunchLog(`WARN: with_server_arg retry failed path=${exePath} err=${String(e?.message || e)}`);
-          }
-        }
+        appendBedrockLaunchLog(`WARN: explorer.exe appUri failed: ${String(e?.message || e)}`);
       }
     }
 
-    // Fallback without Store redirect: native UWP activation (IApplicationActivationManager)
-    // This activates installed app by AUMID directly (not via Store/protocol handlers).
-    if (!launched && aumidCandidates.length && isOldVersion) {
-      for (const aumid of aumidCandidates) {
-        try {
-          appendBedrockLaunchLog(`INFO: try activation-manager aumid=${aumid}`);
-          const ps = [
-            "$ErrorActionPreference='Stop';",
-            "$src=@'",
-            "using System;",
-            "using System.Runtime.InteropServices;",
-            "[ComImport, Guid(\"45BA127D-10A8-46EA-8AB7-56EA9078943C\")]",
-            "class ApplicationActivationManager {}",
-            "[ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid(\"2E941141-7F97-4756-BA1D-9DECDE894A3D\")]",
-            "interface IApplicationActivationManager {",
-            "  int ActivateApplication(string appUserModelId, string arguments, uint options, out uint processId);",
-            "  int ActivateForFile(string appUserModelId, IntPtr itemArray, string verb, out uint processId);",
-            "  int ActivateForProtocol(string appUserModelId, IntPtr itemArray, out uint processId);",
-            "}",
-            "public static class UwpLauncher {",
-            "  public static uint Launch(string aumid){",
-            "    var obj = (IApplicationActivationManager)new ApplicationActivationManager();",
-            "    uint pid;",
-            "    int hr = obj.ActivateApplication(aumid, null, 0, out pid);",
-            "    if(hr < 0) Marshal.ThrowExceptionForHR(hr);",
-            "    return pid;",
-            "  }",
-            "}",
-            "'@;",
-            "Add-Type -TypeDefinition $src -Language CSharp;",
-            `$pid=[UwpLauncher]::Launch('${String(aumid).replace(/'/g, "''")}');`,
-            `Write-Output \"PID=$pid\";`
-          ].join(' ');
-          await runPowerShellAsync(ps);
-          launched = await confirmVisibleLaunch(`activation_manager:${aumid}`);
-          if (launched) break;
-          appendBedrockLaunchLog(`WARN: activation-manager did not yield visible window aumid=${aumid}`);
-        } catch (e) {
-          appendBedrockLaunchLog(`WARN: activation-manager failed aumid=${aumid} err=${String(e?.message || e)}`);
-        }
+    // Attempt 3: cmd start appUri
+    if (!launched) {
+      try {
+        appendBedrockLaunchLog('INFO: launching via cmd start AppsFolder URI');
+        await execFileAsync('cmd', ['/c', 'start', '', appUri], { windowsHide: true });
+        launched = await waitStarted(3000);
+        appendBedrockLaunchLog(launched ? 'INFO: start confirmed after cmd start' : 'WARN: cmd start did not start process');
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: cmd start appUri failed: ${String(e?.message || e)}`);
+      }
+    }
+
+    // Attempt 4: Start-Process by exact StartApps AppID
+    if (!launched) {
+      try {
+        appendBedrockLaunchLog('INFO: launching via PowerShell Start-Process (StartApps AppID)');
+        await runPowerShellAsync("$a=(Get-StartApps | Where-Object { $_.Name -like '*Minecraft for Windows*' -or $_.AppID -match 'MinecraftUWP' } | Select-Object -First 1).AppID; if($a){ Start-Process ('shell:AppsFolder\\' + $a); 'ok' } else { 'no_appid' }");
+        launched = await waitStarted(3000);
+        appendBedrockLaunchLog(launched ? 'INFO: start confirmed after PowerShell Start-Process' : 'WARN: PowerShell Start-Process did not start process');
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: PowerShell Start-Process failed: ${String(e?.message || e)}`);
       }
     }
 
     if (!launched) {
-      appendBedrockLaunchLog('ERROR: launch failed in both direct-exe and activation-manager paths');
-    }
-
-    // IMPORTANT: do NOT fallback to minecraft://, because Windows may redirect to Store.
-    // If direct launch failed, keep launcher visible and return clear diagnostics instead of Store redirect.
-    if (!launched) {
-      appendBedrockLaunchLog('ERROR: all direct launch methods failed; skip minecraft:// fallback to avoid Store redirect');
       restoreLauncherAfterGame();
       return {
         ok: false,
-        error: 'Не удалось запустить Bedrock напрямую (без перехода в Store). Проверь appId/установку и смотри latest-bedrock.txt.',
+        error: 'Не удалось запустить установленную игру системными методами (AppsFolder).',
         logPath: bedrockLogPath || ''
       };
     }
@@ -6419,9 +6175,7 @@ ipcMain.handle('bedrock:launch', async () => {
           appendBedrockLaunchLog('INFO: Bedrock process detected');
           const visible = isBedrockWindowVisible();
           appendBedrockLaunchLog(`INFO: Bedrock window visible=${visible}`);
-          // Launch was already validated during start sequence; this is advisory telemetry only.
           try { hideLauncherForGame(); } catch (_) {}
-          // FPS monitor is manual-only: do not auto-start on Bedrock launch.
           sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
         } else {
           appendBedrockLaunchLog('ERROR: Bedrock process not detected after 4s');
@@ -6439,8 +6193,6 @@ ipcMain.handle('bedrock:launch', async () => {
         appendBedrockLaunchLog(`WARN: post-launch check failed: ${String(e?.message || e)}`);
       }
     }, 4000);
-
-    }
 
     watchBedrockAndRestore();
     ensureAutoLocalHostWatcher();
