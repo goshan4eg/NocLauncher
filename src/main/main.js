@@ -5980,10 +5980,54 @@ ipcMain.handle('bedrock:launch', async () => {
       }
     }
 
-    // AUMID fallback is intentionally disabled to prevent any Store redirects.
-    // We launch only direct local Minecraft executable from detected installLocation.
+    // Fallback without Store redirect: native UWP activation (IApplicationActivationManager)
+    // This activates installed app by AUMID directly (not via Store/protocol handlers).
+    if (!launched && aumidCandidates.length) {
+      for (const aumid of aumidCandidates) {
+        try {
+          appendBedrockLaunchLog(`INFO: try activation-manager aumid=${aumid}`);
+          const ps = [
+            "$ErrorActionPreference='Stop';",
+            "$src=@'",
+            "using System;",
+            "using System.Runtime.InteropServices;",
+            "[ComImport, Guid(\"45BA127D-10A8-46EA-8AB7-56EA9078943C\")]",
+            "class ApplicationActivationManager {}",
+            "[ComImport, InterfaceType(ComInterfaceType.InterfaceIsIUnknown), Guid(\"2E941141-7F97-4756-BA1D-9DECDE894A3D\")]",
+            "interface IApplicationActivationManager {",
+            "  int ActivateApplication(string appUserModelId, string arguments, uint options, out uint processId);",
+            "  int ActivateForFile(string appUserModelId, IntPtr itemArray, string verb, out uint processId);",
+            "  int ActivateForProtocol(string appUserModelId, IntPtr itemArray, out uint processId);",
+            "}",
+            "public static class UwpLauncher {",
+            "  public static uint Launch(string aumid){",
+            "    var obj = (IApplicationActivationManager)new ApplicationActivationManager();",
+            "    uint pid;",
+            "    int hr = obj.ActivateApplication(aumid, null, 0, out pid);",
+            "    if(hr < 0) Marshal.ThrowExceptionForHR(hr);",
+            "    return pid;",
+            "  }",
+            "}",
+            "'@;",
+            "Add-Type -TypeDefinition $src -Language CSharp;",
+            `$pid=[UwpLauncher]::Launch('${String(aumid).replace(/'/g, "''")}');`,
+            `Write-Output \"PID=$pid\";`
+          ].join(' ');
+          await runPowerShellAsync(ps);
+          launched = await waitStarted(4500);
+          if (launched) {
+            appendBedrockLaunchLog(`INFO: start confirmed after activation-manager aumid=${aumid}`);
+            break;
+          }
+          appendBedrockLaunchLog(`WARN: activation-manager no process after wait aumid=${aumid}`);
+        } catch (e) {
+          appendBedrockLaunchLog(`WARN: activation-manager failed aumid=${aumid} err=${String(e?.message || e)}`);
+        }
+      }
+    }
+
     if (!launched) {
-      appendBedrockLaunchLog('WARN: direct exe launch failed; AUMID fallback skipped by policy (no-store mode)');
+      appendBedrockLaunchLog('ERROR: launch failed in both direct-exe and activation-manager paths');
     }
 
     // IMPORTANT: do NOT fallback to minecraft://, because Windows may redirect to Store.
