@@ -5918,30 +5918,8 @@ ipcMain.handle('bedrock:launch', async () => {
     hideLauncherForGame();
 
     // Robust direct launch without Store fallback:
-    // build exact AUMID from installed package + AppxManifest application id.
+    // Robust launch: collect multiple real AUMID candidates and try them all.
     let launched = false;
-    let appId = 'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App';
-    try {
-      const aumidCmd = [
-        "$pkg = Get-AppxPackage -Name Microsoft.MinecraftUWP | Select-Object -First 1;",
-        "if(-not $pkg){''; exit}",
-        "$pf = $pkg.PackageFamilyName;",
-        "$mf = Join-Path $pkg.InstallLocation 'AppxManifest.xml';",
-        "if(Test-Path $mf){",
-        "  [xml]$x = Get-Content $mf -ErrorAction SilentlyContinue;",
-        "  $id = $x.Package.Applications.Application[0].Id;",
-        "  if($id){ ($pf + '!' + $id) } else { ($pf + '!App') }",
-        "} else { ($pf + '!App') }"
-      ].join(' ');
-      const detectedAumid = String(await runPowerShellAsync(aumidCmd) || '').trim();
-      if (detectedAumid) appId = detectedAumid;
-    } catch (e) {
-      appendBedrockLaunchLog(`WARN: AUMID detect failed: ${String(e?.message || e)}`);
-    }
-
-    const appUri = `shell:AppsFolder\\${appId}`;
-    appendBedrockLaunchLog(`INFO: launch_aumid=${appId}`);
-
     const waitStarted = async (ms = 2500) => {
       const until = Date.now() + ms;
       while (Date.now() < until) {
@@ -5951,25 +5929,73 @@ ipcMain.handle('bedrock:launch', async () => {
       return false;
     };
 
-    // Attempt 1: explorer.exe with exact AUMID URI
+    const aumidCandidates = [];
     try {
-      appendBedrockLaunchLog('INFO: launching via explorer.exe AppsFolder AUMID');
-      await execFileAsync('explorer.exe', [appUri], { windowsHide: true });
-      launched = await waitStarted(3500);
-      appendBedrockLaunchLog(launched ? 'INFO: start confirmed after explorer.exe' : 'WARN: explorer.exe did not start process');
+      const aumidCmd = [
+        "$pkg = Get-AppxPackage -Name Microsoft.MinecraftUWP | Select-Object -First 1;",
+        "if(-not $pkg){''; exit}",
+        "$pf = $pkg.PackageFamilyName;",
+        "$mf = Join-Path $pkg.InstallLocation 'AppxManifest.xml';",
+        "$ids = @();",
+        "if(Test-Path $mf){",
+        "  [xml]$x = Get-Content $mf -ErrorAction SilentlyContinue;",
+        "  foreach($a in $x.Package.Applications.Application){ if($a -and $a.Id){ $ids += [string]$a.Id } }",
+        "}",
+        "$ids += 'App','Minecraft','MinecraftUWP';",
+        "$ids = $ids | Where-Object { $_ } | Select-Object -Unique;",
+        "$out = @(); foreach($id in $ids){ $out += ($pf + '!' + $id) };",
+        "$startApps = Get-StartApps | Where-Object { $_.AppID -match 'Minecraft' -or $_.Name -like '*Minecraft*' } | Select-Object -ExpandProperty AppID;",
+        "$out += $startApps;",
+        "$out | Where-Object { $_ } | Select-Object -Unique | ConvertTo-Json -Compress"
+      ].join(' ');
+
+      const raw = String(await runPowerShellAsync(aumidCmd) || '').trim();
+      if (raw) {
+        let parsed = [];
+        try { parsed = JSON.parse(raw); } catch (_) { parsed = [raw]; }
+        if (!Array.isArray(parsed)) parsed = [parsed];
+        for (const v of parsed) {
+          const s = String(v || '').trim();
+          if (s && !aumidCandidates.includes(s)) aumidCandidates.push(s);
+        }
+      }
     } catch (e) {
-      appendBedrockLaunchLog(`WARN: explorer.exe appUri failed: ${String(e?.message || e)}`);
+      appendBedrockLaunchLog(`WARN: AUMID detect failed: ${String(e?.message || e)}`);
     }
 
-    // Attempt 2: PowerShell Start-Process with same exact AUMID URI
-    if (!launched) {
+    // hard fallback ids (last resort)
+    for (const fb of ['Microsoft.MinecraftUWP_8wekyb3d8bbwe!App', 'Microsoft.MinecraftUWP_8wekyb3d8bbwe!Minecraft']) {
+      if (!aumidCandidates.includes(fb)) aumidCandidates.push(fb);
+    }
+
+    appendBedrockLaunchLog(`INFO: launch_aumid_candidates=${JSON.stringify(aumidCandidates)}`);
+
+    for (const aumid of aumidCandidates) {
+      const appUri = `shell:AppsFolder\\${aumid}`;
+      // Attempt A: explorer
       try {
-        appendBedrockLaunchLog('INFO: launching via PowerShell Start-Process exact AUMID');
+        appendBedrockLaunchLog(`INFO: try explorer aumid=${aumid}`);
+        await execFileAsync('explorer.exe', [appUri], { windowsHide: true });
+        launched = await waitStarted(3500);
+        if (launched) {
+          appendBedrockLaunchLog(`INFO: start confirmed after explorer aumid=${aumid}`);
+          break;
+        }
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: explorer failed aumid=${aumid} err=${String(e?.message || e)}`);
+      }
+
+      // Attempt B: PowerShell Start-Process
+      try {
+        appendBedrockLaunchLog(`INFO: try powershell aumid=${aumid}`);
         await runPowerShellAsync(`Start-Process '${appUri.replace(/'/g, "''")}'`);
         launched = await waitStarted(3500);
-        appendBedrockLaunchLog(launched ? 'INFO: start confirmed after PowerShell Start-Process' : 'WARN: PowerShell Start-Process did not start process');
+        if (launched) {
+          appendBedrockLaunchLog(`INFO: start confirmed after powershell aumid=${aumid}`);
+          break;
+        }
       } catch (e) {
-        appendBedrockLaunchLog(`WARN: PowerShell Start-Process failed: ${String(e?.message || e)}`);
+        appendBedrockLaunchLog(`WARN: powershell failed aumid=${aumid} err=${String(e?.message || e)}`);
       }
     }
 
