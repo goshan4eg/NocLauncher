@@ -6727,12 +6727,79 @@ ipcMain.handle('bedrock:uninstall', async () => {
     return { ok: false, error: 'Bedrock uninstall доступен только на Windows.' };
   }
 
+  const details = { appxRemoved: false, killed: [], removedDirs: [], removedFiles: [], errors: [] };
+
+  const safeRm = (pth, recursive = true) => {
+    try {
+      if (!pth || !fs.existsSync(pth)) return false;
+      fs.rmSync(pth, { recursive, force: true });
+      return true;
+    } catch (e) {
+      details.errors.push(`${pth}: ${String(e?.message || e)}`);
+      return false;
+    }
+  };
+
   try {
-    const cmd = "Get-AppxPackage -Name Microsoft.MinecraftUWP | Remove-AppxPackage";
-    execFileSync('powershell', ['-NoProfile', '-Command', cmd], { stdio: ['ignore', 'ignore', 'pipe'] });
-    return { ok: true };
+    // 1) Stop all known Bedrock processes first.
+    for (const n of ['Minecraft.Windows.exe', 'MinecraftWindowsBeta.exe']) {
+      try {
+        execFileSync('taskkill', ['/F', '/IM', n], { stdio: ['ignore', 'ignore', 'ignore'] });
+        details.killed.push(n);
+      } catch (_) {}
+    }
+
+    // 2) Remove AppX registration if present.
+    try {
+      const cmd = "$ErrorActionPreference='SilentlyContinue'; Get-AppxPackage -Name Microsoft.MinecraftUWP | Remove-AppxPackage";
+      execFileSync('powershell', ['-NoProfile', '-Command', cmd], { stdio: ['ignore', 'ignore', 'pipe'] });
+      details.appxRemoved = true;
+    } catch (e) {
+      details.errors.push(`appx_remove: ${String(e?.message || e)}`);
+    }
+
+    // 3) Remove launcher-managed local Bedrock installs from Version/.
+    const roots = [
+      path.join(APP_ROOT, 'Version'),
+      path.join(process.resourcesPath, 'Version')
+    ];
+    const seen = new Set();
+    for (const root of roots) {
+      if (!root || seen.has(root) || !fs.existsSync(root)) continue;
+      seen.add(root);
+      let dirs = [];
+      try { dirs = fs.readdirSync(root, { withFileTypes: true }).filter(d => d.isDirectory()).map(d => d.name); } catch (_) {}
+      for (const d of dirs) {
+        const full = path.join(root, d);
+        const low = String(d || '').toLowerCase();
+        const hasBedrockExe = fs.existsSync(path.join(full, 'Minecraft.Windows.exe')) || fs.existsSync(path.join(full, 'Minecraft.WindowsBeta.exe'));
+        const looksBedrockDir = low.includes('minecraft-') || low.includes('bedrock') || low.includes('uwp') || low.includes('gdk');
+        if (hasBedrockExe || looksBedrockDir) {
+          if (safeRm(full, true)) details.removedDirs.push(full);
+        }
+      }
+    }
+
+    // 4) Remove cached runtime/profile artifacts that can relaunch stale installs.
+    const extraPaths = [
+      path.join(app.getPath('userData'), 'protection'),
+      path.join(app.getPath('userData'), 'bedrock-baseline.json')
+    ];
+    for (const pth of extraPaths) {
+      if (safeRm(pth, true)) {
+        if (pth.toLowerCase().endsWith('.json')) details.removedFiles.push(pth);
+        else details.removedDirs.push(pth);
+      }
+    }
+
+    const ok = details.appxRemoved || details.removedDirs.length > 0 || details.removedFiles.length > 0;
+    return {
+      ok,
+      ...(ok ? {} : { error: 'Не удалось удалить Bedrock: ничего не было удалено. Проверь права администратора.' }),
+      details
+    };
   } catch (e) {
-    return { ok: false, error: String(e?.message || e) };
+    return { ok: false, error: String(e?.message || e), details };
   }
 });
 
