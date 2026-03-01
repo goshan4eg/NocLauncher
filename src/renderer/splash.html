@@ -17,14 +17,10 @@
       --ease: cubic-bezier(.2,.8,.2,1);
     }
     *{ box-sizing:border-box; }
-    html,body{ height:100%; margin:0; }
+    html,body{ height:100%; margin:0; background: transparent !important; }
 
     body{
-      background:
-        radial-gradient(900px 360px at 20% 0%, rgba(47,191,84,.07), rgba(47,191,84,0)),
-        radial-gradient(980px 420px at 85% 100%, rgba(255,116,186,.06), rgba(255,116,186,0)),
-        linear-gradient(180deg, rgba(10,12,18,.25), rgba(8,10,14,.31)),
-        url('./img/fon.png') center/cover no-repeat;
+      background: transparent;
       color: var(--text);
       font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "Liberation Sans", sans-serif;
       display:flex;
@@ -34,13 +30,19 @@
     }
 
     .wrap{
-      width: 100%;
-      height: 100%;
+      width: calc(100% - 16px);
+      height: calc(100% - 16px);
+      margin: 8px;
       padding: 22px;
-      border-radius: 0;
-      background: linear-gradient(180deg, rgba(18,22,32,.86), rgba(10,12,18,.92));
+      border-radius: 20px;
+      overflow: hidden;
+      background:
+        radial-gradient(900px 360px at 20% 0%, rgba(47,191,84,.07), rgba(47,191,84,0)),
+        radial-gradient(980px 420px at 85% 100%, rgba(255,116,186,.06), rgba(255,116,186,0)),
+        linear-gradient(180deg, rgba(18,22,32,.86), rgba(10,12,18,.92)),
+        url('./img/fon.png') center/cover no-repeat;
       border: 1px solid rgba(131,255,174,.14);
-      box-shadow: inset 0 0 0 1px rgba(47,191,84,.06);
+      box-shadow: 0 24px 60px rgba(30,10,24,.45), inset 0 0 0 1px rgba(47,191,84,.06);
       position: relative;
       z-index: 2;
       display: grid;
