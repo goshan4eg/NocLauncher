@@ -5807,77 +5807,84 @@ ipcMain.handle('bedrock:launch', async () => {
       appendBedrockLaunchLog('WARN: minecraftInstalled=false (continuing without Store redirect by user request)');
     }
 
+    // Detect Bedrock version once and allow replacement flows only for >= 1.21.130.0
+    const oldThreshold = '1.21.130.0';
+    const installedBedrockVersion = await detectInstalledBedrockVersion();
+    const canRunReplacementFlows = installedBedrockVersion
+      ? (compareVersionLike(installedBedrockVersion, oldThreshold) >= 0)
+      : false;
+
     // Prepare OS-aware protection bundle location (win10/win11 + arch) before integrity flows.
-    // Old-version special replacement is disabled by request: always use default profile.
     try {
-      const installedBedrockVersion = await detectInstalledBedrockVersion();
-      const oldThreshold = '1.21.130.0';
-      const isOldVersion = installedBedrockVersion ? (compareVersionLike(installedBedrockVersion, oldThreshold) < 0) : false;
       const prep = prepareWindowsProtectionRuntime({ profile: 'default' });
-      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, oldThreshold, isOldVersion, oldProfileDisabled: true })}`);
+      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, oldThreshold, canRunReplacementFlows })}`);
     } catch (e) {
       appendBedrockLaunchLog(`WARN: protection_runtime_prepare_failed=${String(e?.message || e)}`);
     }
 
-    // Mods baseline restore: enforce clean DLL set before every launch.
-    try {
-      const modsRepair = restoreBedrockModsBaseline();
-      appendBedrockLaunchLog(`INFO: mods_baseline_repair=${JSON.stringify(modsRepair)}`);
-    } catch (e) {
-      appendBedrockLaunchLog(`WARN: mods_baseline_repair_failed=${String(e?.message || e)}`);
-    }
-
-    // Replace known critical files from project dll manifest before every launch.
-    try {
-      const dllReplace = await bedrockReplaceFromDllManifest();
-      appendBedrockLaunchLog(`INFO: dll_manifest_replace=${JSON.stringify(dllReplace)}`);
-    } catch (e) {
-      appendBedrockLaunchLog(`WARN: dll_manifest_replace_failed=${String(e?.message || e)}`);
-    }
-
-    // Aggressive auto-replace from baseline before every launch.
-    try {
-      const autoReplace = bedrockAutoReplaceAllFromBaseline();
-      appendBedrockLaunchLog(`INFO: integrity_autoreplace_all=${JSON.stringify(autoReplace)}`);
-      if (Array.isArray(autoReplace?.needRepair) && autoReplace.needRepair.length) {
-        const r = await bedrockIntegrityRepair(autoReplace.needRepair);
-        appendBedrockLaunchLog(`INFO: integrity_autoreplace_repair=${JSON.stringify(r)}`);
+    if (canRunReplacementFlows) {
+      // Mods baseline restore: enforce clean DLL set before every launch.
+      try {
+        const modsRepair = restoreBedrockModsBaseline();
+        appendBedrockLaunchLog(`INFO: mods_baseline_repair=${JSON.stringify(modsRepair)}`);
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: mods_baseline_repair_failed=${String(e?.message || e)}`);
       }
-    } catch (e) {
-      appendBedrockLaunchLog(`WARN: integrity_autoreplace_all_failed=${String(e?.message || e)}`);
-    }
 
-    // Integrity guard: auto-repair/quarantine before every launch.
-    let integrity = await bedrockIntegrityCheck();
-    appendBedrockLaunchLog(`INFO: integrity=${JSON.stringify(integrity)}`);
-    if (!integrity?.ok) {
-      const toRepair = (integrity.mismatches || []).map(x => x.path).filter(Boolean);
-      const repair = await bedrockIntegrityRepair(toRepair);
-      appendBedrockLaunchLog(`WARN: integrity_repair=${JSON.stringify(repair)}`);
+      // Replace known critical files from project dll manifest before every launch.
+      try {
+        const dllReplace = await bedrockReplaceFromDllManifest();
+        appendBedrockLaunchLog(`INFO: dll_manifest_replace=${JSON.stringify(dllReplace)}`);
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: dll_manifest_replace_failed=${String(e?.message || e)}`);
+      }
 
-      // Re-check immediately: user-space suspicious files can be auto-quarantined in same run.
-      const integrityAfter = await bedrockIntegrityCheck();
-      appendBedrockLaunchLog(`INFO: integrity_after_repair=${JSON.stringify(integrityAfter)}`);
-      integrity = integrityAfter;
-
-      if (!integrityAfter?.ok) {
-        const left = Array.isArray(integrityAfter?.mismatches) ? integrityAfter.mismatches : [];
-        const onlyAppxLeft = left.length > 0 && left.every(m => isBedrockAppxInstallPath(m?.path || ''));
-
-        // If only WindowsApps/AppX targets are still unresolved, don't hard-block launch.
-        // On some systems these paths are virtualized/hidden and immediate re-check can show false negatives.
-        if (!onlyAppxLeft) {
-          return {
-            ok: false,
-            error: 'Обнаружены изменения системных/критичных файлов. Запущено восстановление (подтверди UAC), затем запусти игру повторно.',
-            integrity,
-            repair,
-            logPath: bedrockLogPath || ''
-          };
+      // Aggressive auto-replace from baseline before every launch.
+      try {
+        const autoReplace = bedrockAutoReplaceAllFromBaseline();
+        appendBedrockLaunchLog(`INFO: integrity_autoreplace_all=${JSON.stringify(autoReplace)}`);
+        if (Array.isArray(autoReplace?.needRepair) && autoReplace.needRepair.length) {
+          const r = await bedrockIntegrityRepair(autoReplace.needRepair);
+          appendBedrockLaunchLog(`INFO: integrity_autoreplace_repair=${JSON.stringify(r)}`);
         }
-
-        appendBedrockLaunchLog(`WARN: continuing launch with unresolved appx-only mismatches=${JSON.stringify(left)}`);
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: integrity_autoreplace_all_failed=${String(e?.message || e)}`);
       }
+
+      // Integrity guard: auto-repair/quarantine before every launch.
+      let integrity = await bedrockIntegrityCheck();
+      appendBedrockLaunchLog(`INFO: integrity=${JSON.stringify(integrity)}`);
+      if (!integrity?.ok) {
+        const toRepair = (integrity.mismatches || []).map(x => x.path).filter(Boolean);
+        const repair = await bedrockIntegrityRepair(toRepair);
+        appendBedrockLaunchLog(`WARN: integrity_repair=${JSON.stringify(repair)}`);
+
+        // Re-check immediately: user-space suspicious files can be auto-quarantined in same run.
+        const integrityAfter = await bedrockIntegrityCheck();
+        appendBedrockLaunchLog(`INFO: integrity_after_repair=${JSON.stringify(integrityAfter)}`);
+        integrity = integrityAfter;
+
+        if (!integrityAfter?.ok) {
+          const left = Array.isArray(integrityAfter?.mismatches) ? integrityAfter.mismatches : [];
+          const onlyAppxLeft = left.length > 0 && left.every(m => isBedrockAppxInstallPath(m?.path || ''));
+
+          // If only WindowsApps/AppX targets are still unresolved, don't hard-block launch.
+          // On some systems these paths are virtualized/hidden and immediate re-check can show false negatives.
+          if (!onlyAppxLeft) {
+            return {
+              ok: false,
+              error: 'Обнаружены изменения системных/критичных файлов. Запущено восстановление (подтверди UAC), затем запусти игру повторно.',
+              integrity,
+              repair,
+              logPath: bedrockLogPath || ''
+            };
+          }
+
+          appendBedrockLaunchLog(`WARN: continuing launch with unresolved appx-only mismatches=${JSON.stringify(left)}`);
+        }
+      }
+    } else {
+      appendBedrockLaunchLog(`INFO: replacement_flows_skipped_for_old_version version=${installedBedrockVersion || 'unknown'} threshold=${oldThreshold}`);
     }
 
     // Preflight checks before launch (advisory-only; do not hard-stop launch path)
