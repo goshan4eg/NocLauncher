@@ -6009,11 +6009,36 @@ ipcMain.handle('bedrock:launch', async () => {
     // Robust launch without Store redirect: use only validated StartApps AUMIDs for installed package,
     // then fallback to direct package exe start.
     let launched = false;
-    const waitStarted = async (ms = 2500) => {
+    const waitStartedDetailed = async (ms = 3000) => {
       const until = Date.now() + ms;
+      let running = false;
+      let visible = false;
       while (Date.now() < until) {
-        try { if (isBedrockRunning()) return true; } catch (_) {}
-        await new Promise(r => setTimeout(r, 250));
+        try { running = isBedrockRunning(); } catch (_) { running = false; }
+        try { visible = running ? isBedrockWindowVisible() : false; } catch (_) { visible = false; }
+        if (visible) return { running: true, visible: true };
+        await new Promise(r => setTimeout(r, 300));
+      }
+      return { running, visible };
+    };
+
+    const killBedrockProcesses = async (reason = '') => {
+      try {
+        appendBedrockLaunchLog(`WARN: killing_headless_bedrock reason=${reason}`);
+        try { await execFileAsync('taskkill', ['/F', '/IM', 'Minecraft.Windows.exe'], { windowsHide: true }); } catch (_) {}
+        try { await execFileAsync('taskkill', ['/F', '/IM', 'MinecraftWindowsBeta.exe'], { windowsHide: true }); } catch (_) {}
+      } catch (_) {}
+    };
+
+    const confirmVisibleLaunch = async (label) => {
+      const state = await waitStartedDetailed(9000);
+      if (state.visible) {
+        appendBedrockLaunchLog(`INFO: launch confirmed with visible window via ${label}`);
+        return true;
+      }
+      if (state.running) {
+        appendBedrockLaunchLog(`WARN: launch became headless via ${label} (process without window)`);
+        await killBedrockProcesses(label);
       }
       return false;
     };
@@ -6071,11 +6096,8 @@ ipcMain.handle('bedrock:launch', async () => {
           appendBedrockLaunchLog(`INFO: try spawn detached exe=${exePath} args=${JSON.stringify(args)}`);
           const cp = childProcess.spawn(exePath, args, { detached: true, stdio: 'ignore', windowsHide: true });
           try { cp.unref(); } catch (_) {}
-          launched = await waitStarted(5000);
-          if (launched) {
-            appendBedrockLaunchLog(`INFO: start confirmed after detached spawn path=${exePath}`);
-            break;
-          }
+          launched = await confirmVisibleLaunch(`detached_spawn:${exePath}`);
+          if (launched) break;
         } catch (e) {
           appendBedrockLaunchLog(`WARN: detached spawn failed path=${exePath} err=${String(e?.message || e)}`);
         }
@@ -6085,11 +6107,8 @@ ipcMain.handle('bedrock:launch', async () => {
           appendBedrockLaunchLog(`INFO: try cmd start exe=${exePath}`);
           const cmd = `start "" "${exePath.replace(/"/g, '""')}"${args.length ? (' ' + args.map(a => '"' + String(a).replace(/"/g, '""') + '"').join(' ')) : ''}`;
           await execFileAsync('cmd', ['/c', cmd], { windowsHide: true });
-          launched = await waitStarted(4500);
-          if (launched) {
-            appendBedrockLaunchLog(`INFO: start confirmed after cmd start path=${exePath}`);
-            break;
-          }
+          launched = await confirmVisibleLaunch(`cmd_start:${exePath}`);
+          if (launched) break;
         } catch (e) {
           appendBedrockLaunchLog(`WARN: cmd start failed path=${exePath} err=${String(e?.message || e)}`);
         }
@@ -6098,11 +6117,8 @@ ipcMain.handle('bedrock:launch', async () => {
         try {
           appendBedrockLaunchLog(`INFO: try direct execFile exe=${exePath} args=${JSON.stringify(args)}`);
           await execFileAsync(exePath, args, { windowsHide: true });
-          launched = await waitStarted(4500);
-          if (launched) {
-            appendBedrockLaunchLog(`INFO: start confirmed after execFile path=${exePath}`);
-            break;
-          }
+          launched = await confirmVisibleLaunch(`execFile:${exePath}`);
+          if (launched) break;
         } catch (e) {
           appendBedrockLaunchLog(`WARN: direct execFile failed path=${exePath} err=${String(e?.message || e)}`);
         }
@@ -6113,11 +6129,8 @@ ipcMain.handle('bedrock:launch', async () => {
             appendBedrockLaunchLog(`INFO: retry with_server_arg exe=${exePath} args=${JSON.stringify(argsWithServer)}`);
             const cp2 = childProcess.spawn(exePath, argsWithServer, { detached: true, stdio: 'ignore', windowsHide: true });
             try { cp2.unref(); } catch (_) {}
-            launched = await waitStarted(4500);
-            if (launched) {
-              appendBedrockLaunchLog(`INFO: start confirmed after with_server_arg retry path=${exePath}`);
-              break;
-            }
+            launched = await confirmVisibleLaunch(`with_server_arg:${exePath}`);
+            if (launched) break;
           } catch (e) {
             appendBedrockLaunchLog(`WARN: with_server_arg retry failed path=${exePath} err=${String(e?.message || e)}`);
           }
@@ -6159,12 +6172,9 @@ ipcMain.handle('bedrock:launch', async () => {
             `Write-Output \"PID=$pid\";`
           ].join(' ');
           await runPowerShellAsync(ps);
-          launched = await waitStarted(4500);
-          if (launched) {
-            appendBedrockLaunchLog(`INFO: start confirmed after activation-manager aumid=${aumid}`);
-            break;
-          }
-          appendBedrockLaunchLog(`WARN: activation-manager no process after wait aumid=${aumid}`);
+          launched = await confirmVisibleLaunch(`activation_manager:${aumid}`);
+          if (launched) break;
+          appendBedrockLaunchLog(`WARN: activation-manager did not yield visible window aumid=${aumid}`);
         } catch (e) {
           appendBedrockLaunchLog(`WARN: activation-manager failed aumid=${aumid} err=${String(e?.message || e)}`);
         }
@@ -6195,20 +6205,10 @@ ipcMain.handle('bedrock:launch', async () => {
           appendBedrockLaunchLog('INFO: Bedrock process detected');
           const visible = isBedrockWindowVisible();
           appendBedrockLaunchLog(`INFO: Bedrock window visible=${visible}`);
-          if (visible) {
-            try { hideLauncherForGame(); } catch (_) {}
-            // FPS monitor is manual-only: do not auto-start on Bedrock launch.
-            sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
-          } else {
-            // Keep launcher visible; likely headless/hidden start. User can retry without losing control.
-            restoreLauncherAfterGame();
-            sendMcState('error', {
-              error: 'Bedrock стартовал в фоне без видимого окна. Повтори запуск — лаунчер оставлен открытым.',
-              version: 'bedrock',
-              logPath: bedrockLogPath || '',
-              tail: ''
-            });
-          }
+          // Launch was already validated during start sequence; this is advisory telemetry only.
+          try { hideLauncherForGame(); } catch (_) {}
+          // FPS monitor is manual-only: do not auto-start on Bedrock launch.
+          sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
         } else {
           appendBedrockLaunchLog('ERROR: Bedrock process not detected after 4s');
           const diag = await collectBedrockLaunchFailureDiagnostics();
