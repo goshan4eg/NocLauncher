@@ -5943,10 +5943,32 @@ ipcMain.handle('bedrock:launch', async () => {
       try {
         const appInfo = getBedrockAppInfo();
         const appId = String(appInfo?.appId || 'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App').trim();
+        const appUri = `shell:AppsFolder\\${appId}`;
         appendBedrockLaunchLog(`INFO: fast_system_launch_try appId=${appId}`);
-        await execFileAsync('cmd', ['/c', `start "" "shell:AppsFolder\\${appId.replace(/"/g, '""')}"`], { windowsHide: true });
 
-        const until = Date.now() + 7000;
+        // Do NOT await blocking shell commands here: launch and continue.
+        try {
+          await shell.openExternal(appUri);
+          appendBedrockLaunchLog('INFO: fast_system_launch_method=shell.openExternal');
+        } catch (e1) {
+          appendBedrockLaunchLog(`WARN: fast_system_shell_openExternal_failed=${String(e1?.message || e1)}`);
+          try {
+            const cp = childProcess.spawn('cmd', ['/c', `start "" "${appUri.replace(/"/g, '""')}"`], { detached: true, stdio: 'ignore', windowsHide: true });
+            try { cp.unref(); } catch (_) {}
+            appendBedrockLaunchLog('INFO: fast_system_launch_method=cmd_start_detached');
+          } catch (e2) {
+            appendBedrockLaunchLog(`WARN: fast_system_cmd_start_failed=${String(e2?.message || e2)}`);
+            try {
+              const cp2 = childProcess.spawn('explorer.exe', [appUri], { detached: true, stdio: 'ignore', windowsHide: true });
+              try { cp2.unref(); } catch (_) {}
+              appendBedrockLaunchLog('INFO: fast_system_launch_method=explorer_detached');
+            } catch (e3) {
+              appendBedrockLaunchLog(`WARN: fast_system_explorer_failed=${String(e3?.message || e3)}`);
+            }
+          }
+        }
+
+        const until = Date.now() + 9000;
         let started = false;
         while (Date.now() < until) {
           try { if (isBedrockRunning()) { started = true; break; } } catch (_) {}
