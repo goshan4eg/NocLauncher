@@ -1,30 +1,22 @@
-{
-  "generatedAt": "2026-02-24T13:36:58.444Z",
-  "source": "fresh_system_snapshot_plus_mods",
-  "installLocation": "C:\\Program Files\\WindowsApps\\MICROSOFT.MINECRAFTUWP_1.26.101.0_x64__8wekyb3d8bbwe",
-  "copiedCount": 4,
-  "missedCount": 0,
-  "copied": [
-    {
-      "targetPath": "C:\\Windows\\System32\\Windows.ApplicationModel.Store.dll",
-      "sha256": "b22aaee449a9fa4eac638565d8f539f9102a9771c1d247d592b87c0d1f7dfeb9",
-      "projectPath": "C:\\Users\\kiril\\Desktop\\noc1\\dll\\integrity__b22aaee449a9fa4eac638565d8f539f9102a9771c1d247d592b87c0d1f7dfeb9_Windows.ApplicationModel.Store.dll"
-    },
-    {
-      "targetPath": "C:\\Windows\\SysWOW64\\Windows.ApplicationModel.Store.dll",
-      "sha256": "59dae81018c960c9210467b33f1a3033ef6c266d64eb96edf72b9de7c4339f81",
-      "projectPath": "C:\\Users\\kiril\\Desktop\\noc1\\dll\\integrity__59dae81018c960c9210467b33f1a3033ef6c266d64eb96edf72b9de7c4339f81_Windows.ApplicationModel.Store.dll"
-    },
-    {
-      "targetPath": "C:\\Program Files\\WindowsApps\\MICROSOFT.MINECRAFTUWP_1.26.101.0_x64__8wekyb3d8bbwe\\vcruntime140_1.dll",
-      "sha256": "15b2223804ac8a3a10a93233618768413f280c08055cf6e2917dfbc9938246d6",
-      "projectPath": "C:\\Users\\kiril\\Desktop\\noc1\\dll\\integrity__15b2223804ac8a3a10a93233618768413f280c08055cf6e2917dfbc9938246d6_vcruntime140_1.dll"
-    },
-    {
-      "targetPath": "C:\\Users\\kiril\\AppData\\Roaming\\Minecraft Bedrock\\mods\\mods.dll",
-      "sha256": "340e8e7dbdd78b55bfec23fed43012648906e88ea14ef54891dea83d44963074",
-      "projectPath": "C:\\Users\\kiril\\Desktop\\noc1\\dll\\mods__340e8e7dbdd78b55bfec23fed43012648906e88ea14ef54891dea83d44963074_mods.dll"
-    }
-  ],
-  "missed": []
+﻿{
+    "generatedAt":  "2026-03-01T06:18:53Z",
+    "source":  "mcenters_live_targets_snapshot",
+    "installLocation":  "",
+    "copiedCount":  2,
+    "missedCount":  0,
+    "copied":  [
+                   {
+                       "targetPath":  "C:\\Windows\\System32\\Windows.ApplicationModel.Store.dll",
+                       "sha256":  "f3c6d9afe89732761e9bd651830085cdf38945e1ff57d4312255cf447735e325",
+                       "projectPath":  "C:\\Users\\kiril\\Desktop\\noc1\\dll\\Old_version\\integrity__f3c6d9afe89732761e9bd651830085cdf38945e1ff57d4312255cf447735e325_Windows.ApplicationModel.Store.dll"
+                   },
+                   {
+                       "targetPath":  "C:\\Windows\\SysWOW64\\Windows.ApplicationModel.Store.dll",
+                       "sha256":  "f964df4b69040cd37519b95d82574840c43d21c51d1c063f70e93c3d1fa013e2",
+                       "projectPath":  "C:\\Users\\kiril\\Desktop\\noc1\\dll\\Old_version\\integrity__f964df4b69040cd37519b95d82574840c43d21c51d1c063f70e93c3d1fa013e2_Windows.ApplicationModel.Store.dll"
+                   }
+               ],
+    "missed":  [
+
+               ]
 }
