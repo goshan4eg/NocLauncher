@@ -5937,6 +5937,44 @@ ipcMain.handle('bedrock:launch', async () => {
       appendBedrockLaunchLog('WARN: minecraftInstalled=false (continuing without Store redirect by user request)');
     }
 
+    // Fast path (requested): ordinary launch of installed system game, no heavy orchestration.
+    // If this succeeds, return immediately.
+    if (pre?.details?.minecraftInstalled) {
+      try {
+        const appInfo = getBedrockAppInfo();
+        const appId = String(appInfo?.appId || 'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App').trim();
+        appendBedrockLaunchLog(`INFO: fast_system_launch_try appId=${appId}`);
+        await execFileAsync('cmd', ['/c', `start "" "shell:AppsFolder\\${appId.replace(/"/g, '""')}"`], { windowsHide: true });
+
+        const until = Date.now() + 7000;
+        let started = false;
+        while (Date.now() < until) {
+          try { if (isBedrockRunning()) { started = true; break; } } catch (_) {}
+          await new Promise(r => setTimeout(r, 250));
+        }
+
+        appendBedrockLaunchLog(`INFO: fast_system_launch_result started=${started}`);
+        if (started) {
+          try { hideLauncherForGame(); } catch (_) {}
+          setTimeout(() => {
+            try {
+              if (isBedrockRunning()) {
+                sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
+              } else {
+                restoreLauncherAfterGame();
+              }
+            } catch (_) {}
+          }, 4500);
+          watchBedrockAndRestore();
+          ensureAutoLocalHostWatcher();
+          setTimeout(() => { try { openBedrockHubWindow(); } catch (_) {} }, 900);
+          return { ok: true, fastPath: 'system_app', logPath: bedrockLogPath || '' };
+        }
+      } catch (e) {
+        appendBedrockLaunchLog(`WARN: fast_system_launch_failed=${String(e?.message || e)}`);
+      }
+    }
+
     // Detect Bedrock version once and choose replacement profile:
     // < 1.21.130 -> old profile, >= 1.21.130 -> default profile.
     // Supports both plain (1.21.80.3) and Appx-encoded (1.21.8003.0) forms.
