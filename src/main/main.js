@@ -5988,28 +5988,63 @@ ipcMain.handle('bedrock:launch', async () => {
       ];
       for (const exePath of exeCandidates) {
         if (!fs.existsSync(exePath)) continue;
+        const args = serverArg ? [serverArg] : [];
+
+        // Try 1: detached spawn (don't wait on process exit)
         try {
-          const args = serverArg ? [serverArg] : [];
-          appendBedrockLaunchLog(`INFO: try direct exe=${exePath} args=${JSON.stringify(args)}`);
+          appendBedrockLaunchLog(`INFO: try spawn detached exe=${exePath} args=${JSON.stringify(args)}`);
+          const cp = childProcess.spawn(exePath, args, { detached: true, stdio: 'ignore', windowsHide: true });
+          try { cp.unref(); } catch (_) {}
+          launched = await waitStarted(5000);
+          if (launched) {
+            appendBedrockLaunchLog(`INFO: start confirmed after detached spawn path=${exePath}`);
+            break;
+          }
+        } catch (e) {
+          appendBedrockLaunchLog(`WARN: detached spawn failed path=${exePath} err=${String(e?.message || e)}`);
+        }
+
+        // Try 2: cmd start (classic Windows shell launch)
+        try {
+          appendBedrockLaunchLog(`INFO: try cmd start exe=${exePath}`);
+          const cmd = `start "" "${exePath.replace(/"/g, '""')}"${args.length ? (' ' + args.map(a => '"' + String(a).replace(/"/g, '""') + '"').join(' ')) : ''}`;
+          await execFileAsync('cmd', ['/c', cmd], { windowsHide: true });
+          launched = await waitStarted(4500);
+          if (launched) {
+            appendBedrockLaunchLog(`INFO: start confirmed after cmd start path=${exePath}`);
+            break;
+          }
+        } catch (e) {
+          appendBedrockLaunchLog(`WARN: cmd start failed path=${exePath} err=${String(e?.message || e)}`);
+        }
+
+        // Try 3: direct execFile
+        try {
+          appendBedrockLaunchLog(`INFO: try direct execFile exe=${exePath} args=${JSON.stringify(args)}`);
           await execFileAsync(exePath, args, { windowsHide: true });
           launched = await waitStarted(4500);
           if (launched) {
-            appendBedrockLaunchLog(`INFO: start confirmed after direct exe=${exePath}`);
+            appendBedrockLaunchLog(`INFO: start confirmed after execFile path=${exePath}`);
             break;
           }
+        } catch (e) {
+          appendBedrockLaunchLog(`WARN: direct execFile failed path=${exePath} err=${String(e?.message || e)}`);
+        }
 
-          // second try without argument
-          if (!launched && args.length) {
-            appendBedrockLaunchLog(`INFO: retry direct exe without args path=${exePath}`);
-            await execFileAsync(exePath, [], { windowsHide: true });
-            launched = await waitStarted(3500);
+        // Try 4: no args
+        if (!launched && args.length) {
+          try {
+            appendBedrockLaunchLog(`INFO: retry no-args exe=${exePath}`);
+            const cp2 = childProcess.spawn(exePath, [], { detached: true, stdio: 'ignore', windowsHide: true });
+            try { cp2.unref(); } catch (_) {}
+            launched = await waitStarted(4500);
             if (launched) {
-              appendBedrockLaunchLog(`INFO: start confirmed after direct exe retry path=${exePath}`);
+              appendBedrockLaunchLog(`INFO: start confirmed after no-args retry path=${exePath}`);
               break;
             }
+          } catch (e) {
+            appendBedrockLaunchLog(`WARN: no-args retry failed path=${exePath} err=${String(e?.message || e)}`);
           }
-        } catch (e) {
-          appendBedrockLaunchLog(`WARN: direct exe failed path=${exePath} err=${String(e?.message || e)}`);
         }
       }
     }
