@@ -2405,6 +2405,14 @@ function wireUI() {
   // Secondary settings button in the header row
   $('#btnOpenSettings2')?.addEventListener('click', () => openModal('modalSettings'));
 
+  // Frameless window controls
+  $('#btnWinMin')?.addEventListener('click', async () => {
+    try { await window.noc.windowMinimize(); } catch (_) {}
+  });
+  $('#btnWinClose')?.addEventListener('click', async () => {
+    try { await window.noc.windowClose(); } catch (_) {}
+  });
+
   $('#btnLocalServers')?.addEventListener('click', async () => {
     try {
       const url = String(state.settings?.localServersRegistryUrl || '');

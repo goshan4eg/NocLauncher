@@ -144,6 +144,8 @@ modsList: () => ipcRenderer.invoke('mods:list'),
   versionsList: (payload) => ipcRenderer.invoke('versions:list', payload || {}),
 
   shellOpenExternal: (url) => ipcRenderer.invoke('shell:openExternal', { url }),
+  windowMinimize: () => ipcRenderer.invoke('window:minimize'),
+  windowClose: () => ipcRenderer.invoke('window:close'),
   openCatalog: (payload) => ipcRenderer.invoke('catalog:open', payload),
 
   modsSearchCurse: (payload) => ipcRenderer.invoke('mods:searchCurse', payload),

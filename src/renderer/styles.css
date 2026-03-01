@@ -608,6 +608,24 @@ textarea.ta{
 }
 
 .topRight{ display:flex; align-items:center; gap: 8px; }
+
+.winCtl{
+  width: 32px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--border2);
+  background: rgba(0,0,0,.28);
+  color: var(--text);
+  font-weight: 800;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-app-region: no-drag;
+}
+.winCtl:hover{ background: rgba(255,255,255,.12); }
+.winCtlClose:hover{ background: rgba(255,80,110,.25); border-color: rgba(255,120,150,.6); }
+
 .topPill{
   height: 34px;
   padding: 0 12px;

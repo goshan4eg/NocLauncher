@@ -5273,6 +5273,23 @@ ipcMain.handle('shell:openExternal', async (_e, payload) => {
   try { await shell.openExternal(url); return { ok: true }; } catch (e) { return { ok: false, error: String(e?.message || e) }; }
 });
 
+ipcMain.handle('window:minimize', async () => {
+  try {
+    if (win && !win.isDestroyed()) win.minimize();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
+
+ipcMain.handle('window:close', async () => {
+  try {
+    if (win && !win.isDestroyed()) win.close();
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message || e) };
+  }
+});
 
 ipcMain.handle('catalog:open', async (_e, payload) => {
   try {
