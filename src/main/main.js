@@ -5873,7 +5873,8 @@ ipcMain.handle('bedrock:launch', async () => {
     const parsedPatch = parseBedrockPatchNumber(installedBedrockVersion);
     const isOldVersion = !!installedBedrockVersion && parsedPatch < 130;
     const selectedProfile = isOldVersion ? 'old' : 'default';
-    const runReplacementFlows = isOldVersion;
+    // Safety: replacement/integrity flows are disabled for old versions to avoid launch deadlocks and Store redirects.
+    const runReplacementFlows = !isOldVersion;
 
     // Prepare OS-aware protection bundle location (win10/win11 + arch) before integrity flows.
     try {
