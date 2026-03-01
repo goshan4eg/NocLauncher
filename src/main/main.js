@@ -2045,6 +2045,21 @@ function isBedrockRunning() {
   return false;
 }
 
+function isBedrockWindowVisible() {
+  try {
+    const cmd = [
+      "$procs = Get-Process | Where-Object { $_.Name -in @('Minecraft.Windows','MinecraftWindowsBeta') };",
+      "if(-not $procs){'0'; exit}",
+      "$ok = $procs | Where-Object { $_.MainWindowHandle -ne 0 -and -not [string]::IsNullOrWhiteSpace($_.MainWindowTitle) } | Select-Object -First 1;",
+      "if($ok){'1'} else {'0'}"
+    ].join(' ');
+    const out = String(execFileSync('powershell', ['-NoProfile', '-Command', cmd], { stdio: ['ignore', 'pipe', 'ignore'] }) || '').trim();
+    return out === '1';
+  } catch (_) {
+    return false;
+  }
+}
+
 let bedrockFpsMonitorProc = null;
 let bedrockFpsState = {
   enabled: false,
@@ -6178,9 +6193,22 @@ ipcMain.handle('bedrock:launch', async () => {
         const running = isBedrockRunning();
         if (running) {
           appendBedrockLaunchLog('INFO: Bedrock process detected');
-          try { hideLauncherForGame(); } catch (_) {}
-          // FPS monitor is manual-only: do not auto-start on Bedrock launch.
-          sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
+          const visible = isBedrockWindowVisible();
+          appendBedrockLaunchLog(`INFO: Bedrock window visible=${visible}`);
+          if (visible) {
+            try { hideLauncherForGame(); } catch (_) {}
+            // FPS monitor is manual-only: do not auto-start on Bedrock launch.
+            sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
+          } else {
+            // Keep launcher visible; likely headless/hidden start. User can retry without losing control.
+            restoreLauncherAfterGame();
+            sendMcState('error', {
+              error: 'Bedrock стартовал в фоне без видимого окна. Повтори запуск — лаунчер оставлен открытым.',
+              version: 'bedrock',
+              logPath: bedrockLogPath || '',
+              tail: ''
+            });
+          }
         } else {
           appendBedrockLaunchLog('ERROR: Bedrock process not detected after 4s');
           const diag = await collectBedrockLaunchFailureDiagnostics();
