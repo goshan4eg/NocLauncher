@@ -639,6 +639,28 @@ function readBedrockIntegrityBaseline() {
 let protectionRuntimeDllDir = '';
 let protectionPreparedKey = '';
 
+function compareVersionLike(a, b) {
+  const pa = String(a || '').split('.').map(x => Number(x) || 0);
+  const pb = String(b || '').split('.').map(x => Number(x) || 0);
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const da = pa[i] || 0;
+    const db = pb[i] || 0;
+    if (da > db) return 1;
+    if (da < db) return -1;
+  }
+  return 0;
+}
+
+async function detectInstalledBedrockVersion() {
+  try {
+    const out = await runPowerShellAsync("(Get-AppxPackage -Name Microsoft.MinecraftUWP | Select-Object -First 1 Version).Version");
+    return String(out || '').trim();
+  } catch (_) {
+    return '';
+  }
+}
+
 function detectWindowsTag() {
   try {
     if (process.platform !== 'win32') return 'other';
@@ -651,33 +673,50 @@ function detectWindowsTag() {
   }
 }
 
-function prepareWindowsProtectionRuntime() {
+function prepareWindowsProtectionRuntime(options = {}) {
   try {
     if (process.platform !== 'win32') return { ok: false, skipped: true, reason: 'windows_only' };
 
+    const profile = String(options?.profile || 'default').toLowerCase() === 'old' ? 'old' : 'default';
     const winTag = detectWindowsTag();
     const arch = process.arch || 'x64';
-    const key = `${winTag}-${arch}`;
+    const key = `${winTag}-${arch}-${profile}`;
     if (protectionPreparedKey === key && protectionRuntimeDllDir && fs.existsSync(protectionRuntimeDllDir)) {
-      return { ok: true, cached: true, dir: protectionRuntimeDllDir, target: key };
+      return { ok: true, cached: true, dir: protectionRuntimeDllDir, target: key, profile };
     }
 
-    const sourceCandidates = [
+    const defaultCandidates = [
       path.join(APP_ROOT, 'dll'),
       path.join(process.resourcesPath, 'dll')
     ];
-    const src = sourceCandidates.find(p => fs.existsSync(path.join(p, 'manifest.json')) && fs.existsSync(p));
-    if (!src) return { ok: false, skipped: true, reason: 'dll_bundle_not_found' };
+    const oldCandidates = [
+      path.join(APP_ROOT, 'dll', 'Old_version'),
+      path.join(process.resourcesPath, 'dll', 'Old_version')
+    ];
 
-    const dest = path.join(app.getPath('userData'), 'protection', key, 'dll');
+    let src = '';
+    let usedProfile = profile;
+    if (profile === 'old') {
+      src = oldCandidates.find(p => fs.existsSync(path.join(p, 'manifest.json')) && fs.existsSync(p)) || '';
+      if (!src) {
+        usedProfile = 'default';
+        src = defaultCandidates.find(p => fs.existsSync(path.join(p, 'manifest.json')) && fs.existsSync(p)) || '';
+      }
+    } else {
+      src = defaultCandidates.find(p => fs.existsSync(path.join(p, 'manifest.json')) && fs.existsSync(p)) || '';
+    }
+
+    if (!src) return { ok: false, skipped: true, reason: 'dll_bundle_not_found', profile };
+
+    const dest = path.join(app.getPath('userData'), 'protection', `${winTag}-${arch}-${usedProfile}`, 'dll');
     try { fs.mkdirSync(path.dirname(dest), { recursive: true }); } catch (_) {}
 
     // Fast sync: overwrite destination with the current bundled protection files.
     _nativeFs.cpSync(src, dest, { recursive: true, force: true });
 
     protectionRuntimeDllDir = dest;
-    protectionPreparedKey = key;
-    return { ok: true, dir: dest, source: src, target: key };
+    protectionPreparedKey = `${winTag}-${arch}-${usedProfile}`;
+    return { ok: true, dir: dest, source: src, target: protectionPreparedKey, profile: usedProfile, requestedProfile: profile };
   } catch (e) {
     return { ok: false, error: String(e?.message || e) };
   }
@@ -5774,9 +5813,13 @@ ipcMain.handle('bedrock:launch', async () => {
     }
 
     // Prepare OS-aware protection bundle location (win10/win11 + arch) before integrity flows.
+    // For old Bedrock builds (< 1.21.130), use dll/Old_version profile if available.
     try {
-      const prep = prepareWindowsProtectionRuntime();
-      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify(prep)}`);
+      const installedBedrockVersion = await detectInstalledBedrockVersion();
+      const oldThreshold = '1.21.130.0';
+      const useOldProfile = installedBedrockVersion ? (compareVersionLike(installedBedrockVersion, oldThreshold) < 0) : false;
+      const prep = prepareWindowsProtectionRuntime({ profile: useOldProfile ? 'old' : 'default' });
+      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, oldThreshold, useOldProfile })}`);
     } catch (e) {
       appendBedrockLaunchLog(`WARN: protection_runtime_prepare_failed=${String(e?.message || e)}`);
     }
