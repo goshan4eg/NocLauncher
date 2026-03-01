@@ -5937,65 +5937,7 @@ ipcMain.handle('bedrock:launch', async () => {
       appendBedrockLaunchLog('WARN: minecraftInstalled=false (continuing without Store redirect by user request)');
     }
 
-    // Fast path (requested): ordinary launch of installed system game, no heavy orchestration.
-    // If this succeeds, return immediately.
-    if (pre?.details?.minecraftInstalled) {
-      try {
-        const appInfo = getBedrockAppInfo();
-        const appId = String(appInfo?.appId || 'Microsoft.MinecraftUWP_8wekyb3d8bbwe!App').trim();
-        const appUri = `shell:AppsFolder\\${appId}`;
-        appendBedrockLaunchLog(`INFO: fast_system_launch_try appId=${appId}`);
-
-        // Do NOT await blocking shell commands here: launch and continue.
-        try {
-          await shell.openExternal(appUri);
-          appendBedrockLaunchLog('INFO: fast_system_launch_method=shell.openExternal');
-        } catch (e1) {
-          appendBedrockLaunchLog(`WARN: fast_system_shell_openExternal_failed=${String(e1?.message || e1)}`);
-          try {
-            const cp = childProcess.spawn('cmd', ['/c', `start "" "${appUri.replace(/"/g, '""')}"`], { detached: true, stdio: 'ignore', windowsHide: true });
-            try { cp.unref(); } catch (_) {}
-            appendBedrockLaunchLog('INFO: fast_system_launch_method=cmd_start_detached');
-          } catch (e2) {
-            appendBedrockLaunchLog(`WARN: fast_system_cmd_start_failed=${String(e2?.message || e2)}`);
-            try {
-              const cp2 = childProcess.spawn('explorer.exe', [appUri], { detached: true, stdio: 'ignore', windowsHide: true });
-              try { cp2.unref(); } catch (_) {}
-              appendBedrockLaunchLog('INFO: fast_system_launch_method=explorer_detached');
-            } catch (e3) {
-              appendBedrockLaunchLog(`WARN: fast_system_explorer_failed=${String(e3?.message || e3)}`);
-            }
-          }
-        }
-
-        const until = Date.now() + 9000;
-        let started = false;
-        while (Date.now() < until) {
-          try { if (isBedrockRunning()) { started = true; break; } } catch (_) {}
-          await new Promise(r => setTimeout(r, 250));
-        }
-
-        appendBedrockLaunchLog(`INFO: fast_system_launch_result started=${started}`);
-        if (started) {
-          try { hideLauncherForGame(); } catch (_) {}
-          setTimeout(() => {
-            try {
-              if (isBedrockRunning()) {
-                sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
-              } else {
-                restoreLauncherAfterGame();
-              }
-            } catch (_) {}
-          }, 4500);
-          watchBedrockAndRestore();
-          ensureAutoLocalHostWatcher();
-          setTimeout(() => { try { openBedrockHubWindow(); } catch (_) {} }, 900);
-          return { ok: true, fastPath: 'system_app', logPath: bedrockLogPath || '' };
-        }
-      } catch (e) {
-        appendBedrockLaunchLog(`WARN: fast_system_launch_failed=${String(e?.message || e)}`);
-      }
-    }
+    // Fast-path disabled: protection/replacement must run before every launch.
 
     // Detect Bedrock version once and choose replacement profile:
     // < 1.21.130 -> old profile, >= 1.21.130 -> default profile.
