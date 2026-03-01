@@ -5797,19 +5797,14 @@ ipcMain.handle('bedrock:launch', async () => {
     bedrockLogPath = appendBedrockLaunchLog('INFO: Bedrock launch requested');
     if (bedrockLogPath) sendMcState('logpath', { logDir: path.dirname(bedrockLogPath), logPath: bedrockLogPath });
 
-    // Early preflight gate: if Bedrock is not installed, skip any repair/replacement flows.
+    // Early preflight: log-only (do not hard-redirect to Store; continue with protection/launch attempts).
     const pre = await bedrockPreflightChecks();
     appendBedrockLaunchLog(`INFO: preflight_early=${JSON.stringify(pre)}`);
     if (!pre?.ok) {
-      return { ok: false, error: `Preflight не выполнен: ${pre?.error || 'unknown'}`, logPath: bedrockLogPath || '' };
+      appendBedrockLaunchLog(`WARN: preflight_early_failed=${pre?.error || 'unknown'}`);
     }
     if (!pre?.details?.minecraftInstalled) {
-      try { await shell.openExternal('ms-windows-store://pdp/?PFN=Microsoft.MinecraftUWP_8wekyb3d8bbwe'); } catch (_) {}
-      return {
-        ok: false,
-        error: 'Minecraft for Windows не установлен. Открыл Microsoft Store — установи игру и попробуй снова.',
-        logPath: bedrockLogPath || ''
-      };
+      appendBedrockLaunchLog('WARN: minecraftInstalled=false (continuing without Store redirect by user request)');
     }
 
     // Prepare OS-aware protection bundle location (win10/win11 + arch) before integrity flows.
@@ -5885,18 +5880,14 @@ ipcMain.handle('bedrock:launch', async () => {
       }
     }
 
-    // Preflight checks before launch
+    // Preflight checks before launch (advisory-only; do not hard-stop launch path)
     const pf = await bedrockPreflightChecks();
     appendBedrockLaunchLog(`INFO: preflight=${JSON.stringify(pf)}`);
     if (!pf?.ok) {
-      return { ok: false, error: `Preflight не выполнен: ${pf?.error || 'unknown'}`, logPath: bedrockLogPath || '' };
+      appendBedrockLaunchLog(`WARN: preflight_failed=${pf?.error || 'unknown'}`);
     }
-    if (pf.critical) {
-      return {
-        ok: false,
-        error: `Bedrock не готов к запуску: ${pf.criticalMissing.join(', ')}. Открой MS Fix/Xbox Fixer.`,
-        logPath: bedrockLogPath || ''
-      };
+    if (pf?.critical) {
+      appendBedrockLaunchLog(`WARN: preflight_critical=${(pf.criticalMissing || []).join(', ')}`);
     }
 
     // Try to add server entry first (harmless if already present)
