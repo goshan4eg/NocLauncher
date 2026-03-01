@@ -6022,23 +6022,17 @@ ipcMain.handle('bedrock:launch', async () => {
       return { running, visible };
     };
 
-    const killBedrockProcesses = async (reason = '') => {
-      try {
-        appendBedrockLaunchLog(`WARN: killing_headless_bedrock reason=${reason}`);
-        try { await execFileAsync('taskkill', ['/F', '/IM', 'Minecraft.Windows.exe'], { windowsHide: true }); } catch (_) {}
-        try { await execFileAsync('taskkill', ['/F', '/IM', 'MinecraftWindowsBeta.exe'], { windowsHide: true }); } catch (_) {}
-      } catch (_) {}
-    };
-
     const confirmVisibleLaunch = async (label) => {
-      const state = await waitStartedDetailed(9000);
+      const state = await waitStartedDetailed(15000);
       if (state.visible) {
         appendBedrockLaunchLog(`INFO: launch confirmed with visible window via ${label}`);
         return true;
       }
       if (state.running) {
-        appendBedrockLaunchLog(`WARN: launch became headless via ${label} (process without window)`);
-        await killBedrockProcesses(label);
+        // Some builds keep MainWindowTitle empty for longer; treat running process as success
+        // and avoid killing potentially healthy starts.
+        appendBedrockLaunchLog(`WARN: launch running without detected window via ${label}; accepting as started`);
+        return true;
       }
       return false;
     };
