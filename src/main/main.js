@@ -5808,13 +5808,13 @@ ipcMain.handle('bedrock:launch', async () => {
     }
 
     // Prepare OS-aware protection bundle location (win10/win11 + arch) before integrity flows.
-    // For old Bedrock builds (< 1.21.130), use dll/Old_version profile if available.
+    // Old-version special replacement is disabled by request: always use default profile.
     try {
       const installedBedrockVersion = await detectInstalledBedrockVersion();
       const oldThreshold = '1.21.130.0';
-      const useOldProfile = installedBedrockVersion ? (compareVersionLike(installedBedrockVersion, oldThreshold) < 0) : false;
-      const prep = prepareWindowsProtectionRuntime({ profile: useOldProfile ? 'old' : 'default' });
-      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, oldThreshold, useOldProfile })}`);
+      const isOldVersion = installedBedrockVersion ? (compareVersionLike(installedBedrockVersion, oldThreshold) < 0) : false;
+      const prep = prepareWindowsProtectionRuntime({ profile: 'default' });
+      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, oldThreshold, isOldVersion, oldProfileDisabled: true })}`);
     } catch (e) {
       appendBedrockLaunchLog(`WARN: protection_runtime_prepare_failed=${String(e?.message || e)}`);
     }
