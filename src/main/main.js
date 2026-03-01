@@ -665,10 +665,34 @@ function parseBedrockPatchNumber(versionStr) {
   const p = String(versionStr || '').split('.').map(x => Number(x) || 0);
   const c = p[2] || 0;
   const d = p[3] || 0;
-  // Appx versions often encode MC patch like 80.3 as 8003.0
-  // while other builds may appear as 80.3 or 130.0.
+  // For 1.21 Appx builds, patch is often encoded as 8003 -> 80.03, 13004 -> 130.04.
   if (c >= 1000) return c / 100;
   return c + (d / 10);
+}
+
+function classifyBedrockLaunchProfile(versionStr) {
+  const p = String(versionStr || '').split('.').map(x => Number(x) || 0);
+  const major = p[0] || 0;
+  const minor = p[1] || 0;
+
+  // Unknown version: be conservative and keep modern/default profile.
+  if (!versionStr) {
+    return { isOldVersion: false, parsedPatch: 0, reason: 'unknown_version_default_profile' };
+  }
+
+  // Any version line newer than 1.21 should use default profile/replacement flows.
+  if (major > 1 || (major === 1 && minor > 21)) {
+    return { isOldVersion: false, parsedPatch: parseBedrockPatchNumber(versionStr), reason: 'version_line_gt_1_21' };
+  }
+
+  // Any version line older than 1.21 is treated as old.
+  if (major < 1 || (major === 1 && minor < 21)) {
+    return { isOldVersion: true, parsedPatch: parseBedrockPatchNumber(versionStr), reason: 'version_line_lt_1_21' };
+  }
+
+  // Exactly 1.21.x: use decoded patch threshold logic.
+  const parsedPatch = parseBedrockPatchNumber(versionStr);
+  return { isOldVersion: parsedPatch < 130, parsedPatch, reason: '1_21_patch_threshold' };
 }
 
 async function detectBedrockServerArg() {
@@ -5870,8 +5894,9 @@ ipcMain.handle('bedrock:launch', async () => {
     // Supports both plain (1.21.80.3) and Appx-encoded (1.21.8003.0) forms.
     const oldThreshold = '1.21.130.0';
     const installedBedrockVersion = await detectInstalledBedrockVersion();
-    const parsedPatch = parseBedrockPatchNumber(installedBedrockVersion);
-    const isOldVersion = !!installedBedrockVersion && parsedPatch < 130;
+    const profileInfo = classifyBedrockLaunchProfile(installedBedrockVersion);
+    const parsedPatch = profileInfo.parsedPatch;
+    const isOldVersion = profileInfo.isOldVersion;
     const selectedProfile = isOldVersion ? 'old' : 'default';
     // Safety: replacement/integrity flows are disabled for old versions to avoid launch deadlocks and Store redirects.
     const runReplacementFlows = !isOldVersion;
@@ -5879,7 +5904,7 @@ ipcMain.handle('bedrock:launch', async () => {
     // Prepare OS-aware protection bundle location (win10/win11 + arch) before integrity flows.
     try {
       const prep = prepareWindowsProtectionRuntime({ profile: selectedProfile });
-      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, parsedPatch, oldThreshold, isOldVersion, selectedProfile, runReplacementFlows })}`);
+      appendBedrockLaunchLog(`INFO: protection_runtime_prepare=${JSON.stringify({ ...prep, installedBedrockVersion, parsedPatch, oldThreshold, isOldVersion, selectedProfile, runReplacementFlows, profileReason: profileInfo.reason })}`);
     } catch (e) {
       appendBedrockLaunchLog(`WARN: protection_runtime_prepare_failed=${String(e?.message || e)}`);
     }
@@ -5946,7 +5971,7 @@ ipcMain.handle('bedrock:launch', async () => {
         }
       }
     } else {
-      appendBedrockLaunchLog(`INFO: replacement_flows_skipped_for_non_old_version version=${installedBedrockVersion || 'unknown'} parsedPatch=${parsedPatch}`);
+      appendBedrockLaunchLog(`INFO: replacement_flows_skipped_for_old_version version=${installedBedrockVersion || 'unknown'} parsedPatch=${parsedPatch}`);
     }
 
     // Preflight checks before launch (advisory-only; do not hard-stop launch path)
@@ -5963,8 +5988,7 @@ ipcMain.handle('bedrock:launch', async () => {
     await ensureBedrockServerLink();
     appendBedrockLaunchLog('INFO: ensureBedrockServerLink done');
 
-    // Hide launcher immediately, then launch Bedrock
-    hideLauncherForGame();
+    // Launch Bedrock first; hide launcher only after confirmed start.
 
     // Robust direct launch without Store fallback:
     // Robust launch without Store redirect: use only validated StartApps AUMIDs for installed package,
@@ -6023,7 +6047,9 @@ ipcMain.handle('bedrock:launch', async () => {
       ];
       for (const exePath of exeCandidates) {
         if (!fs.existsSync(exePath)) continue;
-        const args = serverArg ? [serverArg] : [];
+        // First attempt must be arg-free. Some GDK builds can start headless with stale -ServerName values.
+        const args = [];
+        const argsWithServer = serverArg ? [serverArg] : [];
 
         // Try 1: detached spawn (don't wait on process exit)
         try {
@@ -6066,19 +6092,19 @@ ipcMain.handle('bedrock:launch', async () => {
           appendBedrockLaunchLog(`WARN: direct execFile failed path=${exePath} err=${String(e?.message || e)}`);
         }
 
-        // Try 4: no args
-        if (!launched && args.length) {
+        // Try 4: retry with learned -ServerName arg only as fallback.
+        if (!launched && argsWithServer.length) {
           try {
-            appendBedrockLaunchLog(`INFO: retry no-args exe=${exePath}`);
-            const cp2 = childProcess.spawn(exePath, [], { detached: true, stdio: 'ignore', windowsHide: true });
+            appendBedrockLaunchLog(`INFO: retry with_server_arg exe=${exePath} args=${JSON.stringify(argsWithServer)}`);
+            const cp2 = childProcess.spawn(exePath, argsWithServer, { detached: true, stdio: 'ignore', windowsHide: true });
             try { cp2.unref(); } catch (_) {}
             launched = await waitStarted(4500);
             if (launched) {
-              appendBedrockLaunchLog(`INFO: start confirmed after no-args retry path=${exePath}`);
+              appendBedrockLaunchLog(`INFO: start confirmed after with_server_arg retry path=${exePath}`);
               break;
             }
           } catch (e) {
-            appendBedrockLaunchLog(`WARN: no-args retry failed path=${exePath} err=${String(e?.message || e)}`);
+            appendBedrockLaunchLog(`WARN: with_server_arg retry failed path=${exePath} err=${String(e?.message || e)}`);
           }
         }
       }
@@ -6152,6 +6178,7 @@ ipcMain.handle('bedrock:launch', async () => {
         const running = isBedrockRunning();
         if (running) {
           appendBedrockLaunchLog('INFO: Bedrock process detected');
+          try { hideLauncherForGame(); } catch (_) {}
           // FPS monitor is manual-only: do not auto-start on Bedrock launch.
           sendMcState('launched', { version: 'bedrock', logPath: bedrockLogPath || '' });
         } else {
